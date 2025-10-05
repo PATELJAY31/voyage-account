@@ -1,0 +1,522 @@
+import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { 
+  ArrowLeft, 
+  Edit, 
+  Download, 
+  FileText, 
+  Calendar, 
+  MapPin, 
+  DollarSign, 
+  User, 
+  Clock,
+  CheckCircle,
+  XCircle,
+  Eye
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { StatusBadge } from "@/components/StatusBadge";
+
+interface Expense {
+  id: string;
+  title: string;
+  destination: string;
+  trip_start: string;
+  trip_end: string;
+  status: string;
+  total_amount: number;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  purpose?: string;
+  admin_comment?: string;
+  assigned_engineer_id?: string;
+  assigned_engineer_name?: string;
+}
+
+interface LineItem {
+  id: string;
+  date: string;
+  category: string;
+  amount: number;
+  description: string;
+}
+
+interface Attachment {
+  id: string;
+  filename: string;
+  content_type: string;
+  file_url: string;
+  created_at: string;
+}
+
+interface AuditLog {
+  id: string;
+  action: string;
+  comment?: string;
+  created_at: string;
+  user_name: string;
+}
+
+export default function ExpenseDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user, userRole } = useAuth();
+  const { toast } = useToast();
+  
+  const [expense, setExpense] = useState<Expense | null>(null);
+  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (id) {
+      fetchExpenseDetails();
+    }
+  }, [id]);
+
+  const fetchExpenseDetails = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch expense with user and engineer info
+      const { data: expenseData, error: expenseError } = await supabase
+        .from("expenses")
+        .select(`
+          *,
+          profiles!inner(name, email),
+          engineer:assigned_engineer_id(profiles(name))
+        `)
+        .eq("id", id)
+        .single();
+
+      if (expenseError) throw expenseError;
+
+      // Check if user has permission to view this expense
+      const canView = 
+        expenseData.user_id === user?.id || 
+        expenseData.assigned_engineer_id === user?.id ||
+        userRole === "admin";
+
+      if (!canView) {
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "You don't have permission to view this expense",
+        });
+        navigate("/expenses");
+        return;
+      }
+
+      setExpense({
+        ...expenseData,
+        user_name: expenseData.profiles.name,
+        user_email: expenseData.profiles.email,
+        assigned_engineer_name: expenseData.engineer?.profiles?.name,
+        total_amount: Number(expenseData.total_amount)
+      });
+
+      // Fetch line items
+      const { data: lineItemsData, error: lineItemsError } = await supabase
+        .from("expense_line_items")
+        .select("*")
+        .eq("expense_id", id)
+        .order("date");
+
+      if (lineItemsError) throw lineItemsError;
+      setLineItems(lineItemsData || []);
+
+      // Fetch attachments
+      const { data: attachmentsData, error: attachmentsError } = await supabase
+        .from("attachments")
+        .select("*")
+        .eq("expense_id", id)
+        .order("created_at");
+
+      if (attachmentsError) throw attachmentsError;
+      setAttachments(attachmentsData || []);
+
+      // Fetch audit logs
+      const { data: auditData, error: auditError } = await supabase
+        .from("audit_logs")
+        .select(`
+          *,
+          profiles!inner(name)
+        `)
+        .eq("expense_id", id)
+        .order("created_at", { ascending: false });
+
+      if (auditError) throw auditError;
+      setAuditLogs(auditData?.map(log => ({
+        ...log,
+        user_name: log.profiles.name
+      })) || []);
+
+    } catch (error) {
+      console.error("Error fetching expense details:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load expense details",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const canEdit = () => {
+    if (!expense) return false;
+    return (
+      (expense.user_id === user?.id && expense.status === "draft") ||
+      userRole === "admin"
+    );
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "approved":
+      case "paid":
+        return <CheckCircle className="h-4 w-4 text-green-600" />;
+      case "rejected":
+        return <XCircle className="h-4 w-4 text-red-600" />;
+      default:
+        return <Clock className="h-4 w-4 text-yellow-600" />;
+    }
+  };
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case "travel":
+        return "✈️";
+      case "lodging":
+        return "🏨";
+      case "food":
+        return "🍽️";
+      default:
+        return "📄";
+    }
+  };
+
+  const getFileIcon = (contentType: string) => {
+    if (contentType.startsWith('image/')) {
+      return "🖼️";
+    } else if (contentType === 'application/pdf') {
+      return "📄";
+    } else if (contentType.includes('word')) {
+      return "📝";
+    }
+    return "📎";
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => navigate("/expenses")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Expenses
+          </Button>
+        </div>
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground mt-2">Loading expense details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!expense) {
+    return (
+      <div className="space-y-8">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => navigate("/expenses")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Expenses
+          </Button>
+        </div>
+        <div className="text-center py-8">
+          <h2 className="text-2xl font-bold">Expense Not Found</h2>
+          <p className="text-muted-foreground">The requested expense could not be found.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => navigate("/expenses")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Expenses
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">{expense.title}</h1>
+            <p className="text-muted-foreground">
+              Created on {format(new Date(expense.created_at), "MMM d, yyyy 'at' h:mm a")}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {canEdit() && (
+            <Button onClick={() => navigate(`/expenses/${expense.id}/edit`)}>
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+          )}
+          <Button variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Expense Overview */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {getStatusIcon(expense.status)}
+                Expense Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <User className="h-4 w-4" />
+                    Employee
+                  </div>
+                  <div>
+                    <p className="font-medium">{expense.user_name}</p>
+                    <p className="text-sm text-muted-foreground">{expense.user_email}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <DollarSign className="h-4 w-4" />
+                    Total Amount
+                  </div>
+                  <p className="text-2xl font-bold">${expense.total_amount.toFixed(2)}</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    Destination
+                  </div>
+                  <p className="font-medium">{expense.destination}</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    Trip Duration
+                  </div>
+                  <p className="font-medium">
+                    {format(new Date(expense.trip_start), "MMM d")} - {format(new Date(expense.trip_end), "MMM d, yyyy")}
+                  </p>
+                </div>
+              </div>
+
+              {expense.purpose && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <FileText className="h-4 w-4" />
+                      Purpose
+                    </div>
+                    <p className="text-sm">{expense.purpose}</p>
+                  </div>
+                </>
+              )}
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    Status
+                  </div>
+                  <StatusBadge status={expense.status as any} />
+                </div>
+                {expense.assigned_engineer_name && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <User className="h-4 w-4" />
+                      Assigned Engineer
+                    </div>
+                    <p className="font-medium">{expense.assigned_engineer_name}</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Line Items */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Expense Line Items</CardTitle>
+              <CardDescription>
+                Detailed breakdown of all expense items
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {lineItems.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">
+                  No line items found
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {lineItems.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">{getCategoryIcon(item.category)}</span>
+                        <div>
+                          <p className="font-medium capitalize">{item.category}</p>
+                          <p className="text-sm text-muted-foreground">{item.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(item.date), "MMM d, yyyy")}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold">${item.amount.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Attachments */}
+          {attachments.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Receipts & Attachments</CardTitle>
+                <CardDescription>
+                  Supporting documents and receipts
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {attachments.map((attachment) => (
+                    <div key={attachment.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">{getFileIcon(attachment.content_type)}</span>
+                        <div>
+                          <p className="font-medium">{attachment.filename}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {attachment.content_type} • {format(new Date(attachment.created_at), "MMM d, yyyy")}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(attachment.file_url, '_blank')}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Admin Comments */}
+          {expense.admin_comment && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Admin Comments</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">{expense.admin_comment}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Status Timeline */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Timeline</CardTitle>
+              <CardDescription>
+                Track the progress of this expense
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {auditLogs.map((log, index) => (
+                  <div key={log.id} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="w-2 h-2 bg-primary rounded-full"></div>
+                      {index < auditLogs.length - 1 && (
+                        <div className="w-px h-8 bg-border mt-2"></div>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-sm font-medium">{log.action}</p>
+                      {log.comment && (
+                        <p className="text-xs text-muted-foreground">{log.comment}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        by {log.user_name} • {format(new Date(log.created_at), "MMM d, h:mm a")}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button variant="outline" className="w-full justify-start">
+                <Download className="h-4 w-4 mr-2" />
+                Export as PDF
+              </Button>
+              <Button variant="outline" className="w-full justify-start">
+                <FileText className="h-4 w-4 mr-2" />
+                Print Receipt
+              </Button>
+              {canEdit() && (
+                <Button className="w-full justify-start">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Expense
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
