@@ -465,13 +465,26 @@ export default function AdminPanel() {
         </p>
         
         {/* Debug: Assign Admin Role Button */}
-        <div className="mt-4">
+        <div className="mt-4 space-x-2">
           <Button 
             onClick={assignAdminRole}
             variant="outline"
             className="bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
           >
             🔧 Debug: Assign Admin Role
+          </Button>
+          <Button 
+            onClick={() => {
+              console.log("=== DEBUG INFO ===");
+              console.log("Current user role:", userRole);
+              console.log("Expenses count:", expenses.length);
+              console.log("Filtered expenses count:", filteredExpenses.length);
+              console.log("Loading state:", loading);
+            }}
+            variant="outline"
+            className="bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100"
+          >
+            🔍 Debug: Check Status
           </Button>
         </div>
       </div>
