@@ -374,6 +374,21 @@ export default function AdminPanel() {
       const { data: currentUser } = await supabase.auth.getUser();
       if (!currentUser.user) return;
 
+      // Check if user already has admin role
+      const { data: existingRoles } = await supabase
+        .from("user_roles")
+        .select("*")
+        .eq("user_id", currentUser.user.id);
+
+      if (existingRoles && existingRoles.some(role => role.role === "admin")) {
+        toast({
+          title: "Admin Role Already Assigned",
+          description: "You already have admin privileges. Checking access...",
+        });
+        fetchData();
+        return;
+      }
+
       const { error } = await supabase
         .from("user_roles")
         .upsert({
@@ -391,11 +406,19 @@ export default function AdminPanel() {
       fetchData();
     } catch (error: any) {
       console.error("Error assigning admin role:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to assign admin role",
-      });
+      if (error.code === "23505") {
+        toast({
+          title: "Admin Role Already Exists",
+          description: "You already have admin privileges. Refreshing data...",
+        });
+        fetchData();
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message || "Failed to assign admin role",
+        });
+      }
     }
   };
 

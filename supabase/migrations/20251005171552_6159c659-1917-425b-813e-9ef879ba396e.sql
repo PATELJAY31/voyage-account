@@ -168,6 +168,15 @@ CREATE POLICY "Users can view their own roles"
   ON public.user_roles FOR SELECT
   USING (auth.uid() = user_id);
 
+CREATE POLICY "Users can insert their own roles"
+  ON public.user_roles FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own roles"
+  ON public.user_roles FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
 -- RLS Policies for expenses
 CREATE POLICY "Users can view their own expenses"
   ON public.expenses FOR SELECT
