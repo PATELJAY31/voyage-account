@@ -25,12 +25,17 @@ import {
   DollarSign,
   Eye,
   UserPlus,
-  Settings
+  Settings,
+  TrendingUp,
+  Filter,
+  Search,
+  Download
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ExpenseService } from "@/services/ExpenseService";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Input } from "@/components/ui/input";
 
 interface User {
   id: string;
@@ -69,6 +74,8 @@ export default function AdminPanel() {
   const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedEngineer, setSelectedEngineer] = useState("");
   const [engineers, setEngineers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
     if (userRole === "admin") {
@@ -307,6 +314,42 @@ export default function AdminPanel() {
     }
   };
 
+  // Filter and search functions
+  const filteredExpenses = expenses.filter(expense => {
+    const matchesSearch = searchTerm === "" || 
+      expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.user_email.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || expense.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const exportExpenses = () => {
+    const csvContent = [
+      ["Employee", "Email", "Title", "Destination", "Amount", "Status", "Created Date"],
+      ...filteredExpenses.map(expense => [
+        expense.user_name,
+        expense.user_email,
+        expense.title,
+        expense.destination,
+        `$${expense.total_amount.toFixed(2)}`,
+        expense.status,
+        format(new Date(expense.created_at), "MMM d, yyyy")
+      ])
+    ].map(row => row.join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `expenses-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const getStats = () => {
     const totalExpenses = expenses.length;
     const pendingExpenses = expenses.filter(e => ["submitted", "under_review", "verified"].includes(e.status)).length;
@@ -337,64 +380,88 @@ export default function AdminPanel() {
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
-          <p className="text-muted-foreground">
-            Manage users, expenses, and system settings
-          </p>
+      {/* Header Section */}
+      <div className="text-center space-y-4">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl shadow-lg">
+          <Settings className="h-8 w-8 text-white" />
         </div>
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+          Admin Panel
+        </h1>
+        <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          Manage users, expenses, and system settings with comprehensive oversight
+        </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalUsers}</div>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-600">Total Users</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Users className="h-6 w-6 text-white" />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
-            <Receipt className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalExpenses}</div>
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-600">Total Expenses</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalExpenses}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Receipt className="h-6 w-6 text-white" />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pendingExpenses}</div>
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-600">Pending</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.pendingExpenses}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
+                <Clock className="h-6 w-6 text-white" />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Approved</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.approvedExpenses}</div>
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-600">Approved</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.approvedExpenses}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
+                <CheckCircle className="h-6 w-6 text-white" />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${stats.totalAmount.toFixed(2)}</div>
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-600">Total Amount</p>
+                <p className="text-2xl font-bold text-gray-900">${stats.totalAmount.toFixed(2)}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <DollarSign className="h-6 w-6 text-white" />
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -407,29 +474,98 @@ export default function AdminPanel() {
         </TabsList>
 
         <TabsContent value="expenses" className="space-y-4">
-          <Card>
+          {/* Search and Filter Controls */}
+          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+            <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                  <Filter className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-bold">Search & Filter Expenses</CardTitle>
+                  <CardDescription className="text-blue-100">Find and filter expenses by various criteria</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Search</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search by title, destination, employee..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Status Filter</label>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="submitted">Submitted</SelectItem>
+                      <SelectItem value="under_review">Under Review</SelectItem>
+                      <SelectItem value="verified">Verified</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Actions</label>
+                  <Button 
+                    onClick={exportExpenses}
+                    className="w-full h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="mt-4 text-sm text-gray-600">
+                Showing {filteredExpenses.length} of {expenses.length} expenses
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle>All Expenses</CardTitle>
-              <CardDescription>Review and manage expense submissions</CardDescription>
+              <CardTitle className="text-xl font-bold">All Expenses</CardTitle>
+              <CardDescription>Review and manage expense submissions from all users</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="text-muted-foreground">Loading...</p>
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="ml-2 text-gray-600">Loading expenses...</span>
+                </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Destination</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenses.map((expense) => (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-gray-200">
+                        <TableHead className="font-semibold">Employee</TableHead>
+                        <TableHead className="font-semibold">Title</TableHead>
+                        <TableHead className="font-semibold">Destination</TableHead>
+                        <TableHead className="font-semibold">Amount</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="font-semibold">Created</TableHead>
+                        <TableHead className="text-right font-semibold">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredExpenses.map((expense) => (
                       <TableRow key={expense.id}>
                         <TableCell>
                           <div>
