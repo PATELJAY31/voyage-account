@@ -133,35 +133,17 @@ export default function AdminPanel() {
   };
 
   const fetchExpenses = async () => {
-    console.log("Fetching expenses for admin...");
-    
-    // First, let's check the current user's role
-    const { data: currentUser } = await supabase.auth.getUser();
-    console.log("Current user:", currentUser.user?.id);
-    
-    // Check user roles
-    const { data: userRoles, error: roleError } = await supabase
-      .from("user_roles")
-      .select("*")
-      .eq("user_id", currentUser.user?.id);
-    
-    console.log("User roles:", userRoles, "Error:", roleError);
-    
     // Get expenses first
     const { data: expensesData, error: expensesError } = await supabase
       .from("expenses")
       .select("*")
       .order("created_at", { ascending: false });
 
-    console.log("Expenses query result:", { data: expensesData, error: expensesError });
-
     if (expensesError) {
-      console.error("Error fetching expenses:", expensesError);
       throw expensesError;
     }
 
     if (!expensesData || expensesData.length === 0) {
-      console.log("No expenses found");
       setExpenses([]);
       return;
     }
@@ -174,7 +156,6 @@ export default function AdminPanel() {
       .in("user_id", userIds);
 
     if (profilesError) {
-      console.error("Error fetching profiles:", profilesError);
       throw profilesError;
     }
 
@@ -189,7 +170,6 @@ export default function AdminPanel() {
       };
     });
 
-    console.log("Final expenses with profiles:", expensesWithProfiles);
     setExpenses(expensesWithProfiles);
   };
 
@@ -409,58 +389,6 @@ export default function AdminPanel() {
     window.URL.revokeObjectURL(url);
   };
 
-  const assignAdminRole = async () => {
-    try {
-      const { data: currentUser } = await supabase.auth.getUser();
-      if (!currentUser.user) return;
-
-      // Check if user already has admin role
-      const { data: existingRoles } = await supabase
-        .from("user_roles")
-        .select("*")
-        .eq("user_id", currentUser.user.id);
-
-      if (existingRoles && existingRoles.some(role => role.role === "admin")) {
-        toast({
-          title: "Admin Role Already Assigned",
-          description: "You already have admin privileges. Checking access...",
-        });
-        fetchData();
-        return;
-      }
-
-      const { error } = await supabase
-        .from("user_roles")
-        .upsert({
-          user_id: currentUser.user.id,
-          role: "admin",
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: "Admin Role Assigned",
-        description: "You now have admin privileges",
-      });
-
-      fetchData();
-    } catch (error: any) {
-      console.error("Error assigning admin role:", error);
-      if (error.code === "23505") {
-        toast({
-          title: "Admin Role Already Exists",
-          description: "You already have admin privileges. Refreshing data...",
-        });
-        fetchData();
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: error.message || "Failed to assign admin role",
-        });
-      }
-    }
-  };
 
   const getStats = () => {
     const totalExpenses = expenses.length;
@@ -504,29 +432,6 @@ export default function AdminPanel() {
           Manage users, expenses, and system settings with comprehensive oversight
         </p>
         
-        {/* Debug: Assign Admin Role Button */}
-        <div className="mt-4 space-x-2">
-          <Button 
-            onClick={assignAdminRole}
-            variant="outline"
-            className="bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
-          >
-            🔧 Debug: Assign Admin Role
-          </Button>
-          <Button 
-            onClick={() => {
-              console.log("=== DEBUG INFO ===");
-              console.log("Current user role:", userRole);
-              console.log("Expenses count:", expenses.length);
-              console.log("Filtered expenses count:", filteredExpenses.length);
-              console.log("Loading state:", loading);
-            }}
-            variant="outline"
-            className="bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100"
-          >
-            🔍 Debug: Check Status
-          </Button>
-        </div>
       </div>
 
       {/* Stats Cards */}
