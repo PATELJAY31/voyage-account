@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, DollarSign, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Plus, DollarSign, Clock, CheckCircle, XCircle, TrendingUp, Users, Receipt } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface DashboardStats {
