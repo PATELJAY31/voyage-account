@@ -125,6 +125,20 @@ export default function AdminPanel() {
   };
 
   const fetchExpenses = async () => {
+    console.log("Fetching expenses for admin...");
+    
+    // First, let's check the current user's role
+    const { data: currentUser } = await supabase.auth.getUser();
+    console.log("Current user:", currentUser.user?.id);
+    
+    // Check user roles
+    const { data: userRoles, error: roleError } = await supabase
+      .from("user_roles")
+      .select("*")
+      .eq("user_id", currentUser.user?.id);
+    
+    console.log("User roles:", userRoles, "Error:", roleError);
+    
     const { data, error } = await supabase
       .from("expenses")
       .select(`
@@ -133,7 +147,12 @@ export default function AdminPanel() {
       `)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    console.log("Expenses query result:", { data, error });
+
+    if (error) {
+      console.error("Error fetching expenses:", error);
+      throw error;
+    }
 
     setExpenses(data.map(expense => ({
       ...expense,
@@ -350,6 +369,36 @@ export default function AdminPanel() {
     window.URL.revokeObjectURL(url);
   };
 
+  const assignAdminRole = async () => {
+    try {
+      const { data: currentUser } = await supabase.auth.getUser();
+      if (!currentUser.user) return;
+
+      const { error } = await supabase
+        .from("user_roles")
+        .upsert({
+          user_id: currentUser.user.id,
+          role: "admin",
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Admin Role Assigned",
+        description: "You now have admin privileges",
+      });
+
+      fetchData();
+    } catch (error: any) {
+      console.error("Error assigning admin role:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to assign admin role",
+      });
+    }
+  };
+
   const getStats = () => {
     const totalExpenses = expenses.length;
     const pendingExpenses = expenses.filter(e => ["submitted", "under_review", "verified"].includes(e.status)).length;
@@ -391,6 +440,17 @@ export default function AdminPanel() {
         <p className="text-lg text-gray-600 max-w-2xl mx-auto">
           Manage users, expenses, and system settings with comprehensive oversight
         </p>
+        
+        {/* Debug: Assign Admin Role Button */}
+        <div className="mt-4">
+          <Button 
+            onClick={assignAdminRole}
+            variant="outline"
+            className="bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
+          >
+            🔧 Debug: Assign Admin Role
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
