@@ -49,6 +49,16 @@ export default function UserManagement() {
       return;
     }
 
+    // Check if password is empty or too short
+    if (!formData.password || formData.password.length < 8) {
+      toast({
+        variant: "destructive",
+        title: "Password Required",
+        description: "Please enter a password with at least 8 characters or use the Generate button",
+      });
+      return;
+    }
+
     try {
       const validated = createUserSchema.parse(formData);
       setLoading(true);
@@ -242,18 +252,24 @@ export default function UserManagement() {
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                    placeholder="Enter temporary password"
+                    placeholder="Enter temporary password (min 8 characters)"
                     required
+                    className={formData.password && formData.password.length < 8 ? "border-red-500" : ""}
                   />
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="default"
                     onClick={generatePassword}
-                    className="whitespace-nowrap"
+                    className="whitespace-nowrap bg-blue-600 hover:bg-blue-700"
                   >
-                    Generate
+                    Generate Secure Password
                   </Button>
                 </div>
+                {formData.password && formData.password.length < 8 && (
+                  <p className="text-xs text-red-500">
+                    Password must be at least 8 characters long
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   User will be required to change this password on first login
                 </p>
@@ -266,6 +282,15 @@ export default function UserManagement() {
                 <div><strong>Employee:</strong> Create and submit expense claims, view own expenses</div>
                 <div><strong>Engineer:</strong> Review and verify assigned expenses, add comments</div>
                 <div><strong>Admin:</strong> Full system access, user management, expense approval</div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <h4 className="font-medium mb-2 text-blue-800">Password Requirements:</h4>
+              <div className="space-y-1 text-sm text-blue-700">
+                <div>• Minimum 8 characters long</div>
+                <div>• Use the "Generate Secure Password" button for a strong password</div>
+                <div>• User will be required to change password on first login</div>
               </div>
             </div>
 
