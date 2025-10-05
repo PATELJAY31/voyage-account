@@ -15,6 +15,7 @@ import { CalendarIcon, Plus, Trash2, Save, Send } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { FileUpload } from "@/components/FileUpload";
+import { ExpenseService, CreateExpenseData, UpdateExpenseData } from "@/services/ExpenseService";
 import { z } from "zod";
 
 const expenseSchema = z.object({
@@ -166,85 +167,59 @@ export default function ExpenseForm() {
   };
 
   const saveExpense = async (status: "draft" | "submitted" = "draft") => {
-    try {
-      const validatedExpense = expenseSchema.parse(expense);
-      const validatedLineItems = lineItems.map((item) => lineItemSchema.parse(item));
+    if (!user) return;
 
+    try {
       setLoading(true);
 
-      if (isEditing) {
+      // Validate expense data
+      const validatedExpense = expenseSchema.parse({
+        ...expense,
+        trip_start: expense.trip_start,
+        trip_end: expense.trip_end,
+      });
+
+      // Validate line items
+      const validatedLineItems = lineItems.map(item => 
+        lineItemSchema.parse({
+          ...item,
+          date: item.date,
+        })
+      );
+
+      if (validatedLineItems.length === 0) {
+        throw new Error("At least one line item is required");
+      }
+
+      // Prepare data for ExpenseService
+      const expenseData: CreateExpenseData | UpdateExpenseData = {
+        title: validatedExpense.title,
+        destination: validatedExpense.destination,
+        trip_start: validatedExpense.trip_start.toISOString().split('T')[0],
+        trip_end: validatedExpense.trip_end.toISOString().split('T')[0],
+        purpose: validatedExpense.purpose,
+        line_items: validatedLineItems.map(item => ({
+          date: item.date.toISOString().split('T')[0],
+          category: item.category,
+          amount: item.amount,
+          description: item.description,
+        })),
+      };
+
+      if (isEditing && id) {
         // Update existing expense
-        const { error: expenseError } = await supabase
-          .from("expenses")
-          .update({
-            title: validatedExpense.title,
-            destination: validatedExpense.destination,
-            trip_start: validatedExpense.trip_start.toISOString().split('T')[0],
-            trip_end: validatedExpense.trip_end.toISOString().split('T')[0],
-            purpose: validatedExpense.purpose,
-            status,
-          })
-          .eq("id", id);
-
-        if (expenseError) throw expenseError;
-
-        // Delete existing line items
-        await supabase
-          .from("expense_line_items")
-          .delete()
-          .eq("expense_id", id);
-
-        // Insert new line items
-        if (validatedLineItems.length > 0) {
-          const { error: lineItemsError } = await supabase
-            .from("expense_line_items")
-            .insert(
-              validatedLineItems.map((item) => ({
-                expense_id: id,
-                date: item.date.toISOString().split('T')[0],
-                category: item.category,
-                amount: item.amount,
-                description: item.description,
-              }))
-            );
-
-          if (lineItemsError) throw lineItemsError;
-        }
+        await ExpenseService.updateExpense(id, user.id, {
+          ...expenseData,
+          status: status,
+        });
       } else {
         // Create new expense
-        const { data: expenseData, error: expenseError } = await supabase
-          .from("expenses")
-          .insert({
-            user_id: user?.id,
-            title: validatedExpense.title,
-            destination: validatedExpense.destination,
-            trip_start: validatedExpense.trip_start.toISOString().split('T')[0],
-            trip_end: validatedExpense.trip_end.toISOString().split('T')[0],
-            purpose: validatedExpense.purpose,
-            status,
-          })
-          .select()
-          .single();
-
-        if (expenseError) throw expenseError;
-
-        setCurrentExpenseId(expenseData.id);
-
-        // Insert line items
-        if (validatedLineItems.length > 0) {
-          const { error: lineItemsError } = await supabase
-            .from("expense_line_items")
-            .insert(
-              validatedLineItems.map((item) => ({
-                expense_id: expenseData.id,
-                date: item.date.toISOString().split('T')[0],
-                category: item.category,
-                amount: item.amount,
-                description: item.description,
-              }))
-            );
-
-          if (lineItemsError) throw lineItemsError;
+        const newExpense = await ExpenseService.createExpense(user.id, expenseData as CreateExpenseData);
+        setCurrentExpenseId(newExpense.id);
+        
+        // If submitting, update status
+        if (status === "submitted") {
+          await ExpenseService.submitExpense(newExpense.id, user.id);
         }
       }
 

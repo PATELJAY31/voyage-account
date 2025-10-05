@@ -16,6 +16,7 @@ import EngineerReview from "./pages/EngineerReview";
 import Analytics from "./pages/Analytics";
 import ExpenseTemplates from "./pages/ExpenseTemplates";
 import Notifications from "./pages/Notifications";
+import UserManagement from "./pages/UserManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -95,7 +96,7 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <Layout>
-                    <AdminPanel />
+                    <UserManagement />
                   </Layout>
                 </ProtectedRoute>
               }

@@ -50,24 +50,29 @@ export function FileUpload({
       setUploading(true);
       setUploadProgress(0);
 
-      // Validate file type and size
-      const maxSize = 10 * 1024 * 1024; // 10MB
+      // Validate file type and size according to spec
+      const maxSize = 10 * 1024 * 1024; // 10MB as per spec
       if (file.size > maxSize) {
         throw new Error("File size must be less than 10MB");
       }
 
+      // Only allow PDF, PNG, JPG as per spec
       const allowedTypes = [
         'image/jpeg',
+        'image/jpg', 
         'image/png',
-        'image/gif',
-        'application/pdf',
-        'text/plain',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        'application/pdf'
       ];
 
       if (!allowedTypes.includes(file.type)) {
-        throw new Error("File type not supported. Please upload images, PDFs, or documents.");
+        throw new Error("Only PDF, PNG, and JPG files are allowed");
+      }
+
+      // Additional validation for file extensions
+      const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+      const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+      if (!allowedExtensions.includes(fileExtension)) {
+        throw new Error("File extension not supported. Only PDF, PNG, and JPG files are allowed.");
       }
 
       // Create unique filename
@@ -199,11 +204,11 @@ export function FileUpload({
       <CardContent className="space-y-4">
         {/* Upload Area */}
         <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
-          <input
+                <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*,.pdf,.doc,.docx,.txt"
+            accept=".pdf,.png,.jpg,.jpeg"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -223,7 +228,7 @@ export function FileUpload({
               </p>
             </div>
             <p className="text-xs text-muted-foreground">
-              Supports: Images, PDF, Word documents (max 10MB each)
+              Supports: PDF, PNG, JPG files only (max 10MB each)
             </p>
           </div>
 

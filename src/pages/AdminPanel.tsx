@@ -28,6 +28,7 @@ import {
   Settings
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ExpenseService } from "@/services/ExpenseService";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 
@@ -154,6 +155,75 @@ export default function AdminPanel() {
       created_at: "",
       is_active: true
     })));
+  };
+
+  const approveExpense = async () => {
+    if (!selectedExpense || !user) return;
+
+    try {
+      await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
+      
+      toast({
+        title: "Expense Approved",
+        description: "The expense has been approved successfully",
+      });
+
+      setSelectedExpense(null);
+      setAdminComment("");
+      fetchExpenses();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to approve expense",
+      });
+    }
+  };
+
+  const rejectExpense = async () => {
+    if (!selectedExpense || !user) return;
+
+    try {
+      await ExpenseService.rejectExpense(selectedExpense.id, user.id, adminComment);
+      
+      toast({
+        title: "Expense Rejected",
+        description: "The expense has been rejected",
+      });
+
+      setSelectedExpense(null);
+      setAdminComment("");
+      fetchExpenses();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to reject expense",
+      });
+    }
+  };
+
+  const assignToEngineer = async () => {
+    if (!selectedExpense || !selectedEngineer || !user) return;
+
+    try {
+      await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
+      
+      toast({
+        title: "Expense Assigned",
+        description: "The expense has been assigned to an engineer for review",
+      });
+
+      setSelectedExpense(null);
+      setSelectedEngineer("");
+      fetchExpenses();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to assign expense",
+      });
+    }
   };
 
   const updateExpenseStatus = async () => {

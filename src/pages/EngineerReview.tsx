@@ -25,6 +25,7 @@ import {
   User
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ExpenseService } from "@/services/ExpenseService";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 
@@ -135,30 +136,17 @@ export default function EngineerReview() {
   };
 
   const updateExpenseStatus = async (status: "verified" | "rejected") => {
-    if (!selectedExpense) return;
+    if (!selectedExpense || !user) return;
 
     try {
       setReviewLoading(true);
 
-      const { error } = await supabase
-        .from("expenses")
-        .update({
-          status,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", selectedExpense.id);
-
-      if (error) throw error;
-
-      // Log the action
-      await supabase
-        .from("audit_logs")
-        .insert({
-          expense_id: selectedExpense.id,
-          user_id: user?.id,
-          action: `Engineer ${status} expense`,
-          comment: engineerComment || null
-        });
+      await ExpenseService.verifyExpense(
+        selectedExpense.id, 
+        user.id, 
+        status === "verified", 
+        engineerComment
+      );
 
       toast({
         title: "Success",
