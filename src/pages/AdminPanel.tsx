@@ -99,29 +99,37 @@ export default function AdminPanel() {
   };
 
   const fetchUsers = async () => {
-    const { data, error } = await supabase
+    // First get profiles
+    const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select(`
-        id,
-        user_id,
-        name,
-        email,
-        created_at,
-        is_active,
-        user_roles!inner(role)
-      `)
+      .select("id, user_id, name, email, created_at, is_active")
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (profilesError) throw profilesError;
 
-    setUsers(data.map(user => ({
-      id: user.user_id,
-      email: user.email,
-      name: user.name,
-      role: user.user_roles[0]?.role || "employee",
-      created_at: user.created_at,
-      is_active: user.is_active
-    })));
+    // Then get roles for each user
+    const userIds = profiles.map(p => p.user_id);
+    const { data: roles, error: rolesError } = await supabase
+      .from("user_roles")
+      .select("user_id, role")
+      .in("user_id", userIds);
+
+    if (rolesError) throw rolesError;
+
+    // Combine the data
+    const usersWithRoles = profiles.map(profile => {
+      const userRole = roles.find(r => r.user_id === profile.user_id);
+      return {
+        id: profile.user_id,
+        email: profile.email,
+        name: profile.name,
+        role: userRole?.role || "employee",
+        created_at: profile.created_at,
+        is_active: profile.is_active
+      };
+    });
+
+    setUsers(usersWithRoles);
   };
 
   const fetchExpenses = async () => {
@@ -139,47 +147,79 @@ export default function AdminPanel() {
     
     console.log("User roles:", userRoles, "Error:", roleError);
     
-    const { data, error } = await supabase
+    // Get expenses first
+    const { data: expensesData, error: expensesError } = await supabase
       .from("expenses")
-      .select(`
-        *,
-        profiles!inner(name, email)
-      `)
+      .select("*")
       .order("created_at", { ascending: false });
 
-    console.log("Expenses query result:", { data, error });
+    console.log("Expenses query result:", { data: expensesData, error: expensesError });
 
-    if (error) {
-      console.error("Error fetching expenses:", error);
-      throw error;
+    if (expensesError) {
+      console.error("Error fetching expenses:", expensesError);
+      throw expensesError;
     }
 
-    setExpenses(data.map(expense => ({
-      ...expense,
-      user_name: expense.profiles.name,
-      user_email: expense.profiles.email,
-      total_amount: Number(expense.total_amount)
-    })));
+    if (!expensesData || expensesData.length === 0) {
+      console.log("No expenses found");
+      setExpenses([]);
+      return;
+    }
+
+    // Get user profiles for the expenses
+    const userIds = [...new Set(expensesData.map(e => e.user_id))];
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("user_id, name, email")
+      .in("user_id", userIds);
+
+    if (profilesError) {
+      console.error("Error fetching profiles:", profilesError);
+      throw profilesError;
+    }
+
+    // Combine expenses with profile data
+    const expensesWithProfiles = expensesData.map(expense => {
+      const profile = profiles?.find(p => p.user_id === expense.user_id);
+      return {
+        ...expense,
+        user_name: profile?.name || "Unknown User",
+        user_email: profile?.email || "unknown@example.com",
+        total_amount: Number(expense.total_amount)
+      };
+    });
+
+    console.log("Final expenses with profiles:", expensesWithProfiles);
+    setExpenses(expensesWithProfiles);
   };
 
   const fetchEngineers = async () => {
-    const { data, error } = await supabase
+    // Get engineers from user_roles
+    const { data: engineerRoles, error: rolesError } = await supabase
       .from("user_roles")
-      .select(`
-        user_id,
-        profiles!inner(name, email)
-      `)
+      .select("user_id")
       .eq("role", "engineer");
 
-    if (error) throw error;
+    if (rolesError) throw rolesError;
 
-    setEngineers(data.map(item => ({
-      id: item.user_id,
-      email: item.profiles.email,
-      name: item.profiles.name,
-      role: "engineer",
-      created_at: "",
-      is_active: true
+    if (!engineerRoles || engineerRoles.length === 0) {
+      setEngineers([]);
+      return;
+    }
+
+    // Get profiles for engineers
+    const engineerIds = engineerRoles.map(r => r.user_id);
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("user_id, name, email")
+      .in("user_id", engineerIds);
+
+    if (profilesError) throw profilesError;
+
+    setEngineers(profiles.map(profile => ({
+      id: profile.user_id,
+      name: profile.name,
+      email: profile.email
     })));
   };
 
