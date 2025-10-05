@@ -5,6 +5,9 @@ import {
   Users,
   FileText,
   LogOut,
+  BarChart3,
+  FileType,
+  Bell,
 } from "lucide-react";
 import {
   Sidebar,
@@ -26,17 +29,26 @@ export function AppSidebar() {
   const employeeItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "My Expenses", url: "/expenses", icon: Receipt },
+    { title: "Templates", url: "/templates", icon: FileType },
+    { title: "Analytics", url: "/analytics", icon: BarChart3 },
+    { title: "Notifications", url: "/notifications", icon: Bell },
   ];
 
   const engineerItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Review Expenses", url: "/review", icon: FileText },
+    { title: "Templates", url: "/templates", icon: FileType },
+    { title: "Analytics", url: "/analytics", icon: BarChart3 },
+    { title: "Notifications", url: "/notifications", icon: Bell },
   ];
 
   const adminItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "All Expenses", url: "/admin/expenses", icon: Receipt },
     { title: "Manage Users", url: "/admin/users", icon: Users },
+    { title: "Templates", url: "/templates", icon: FileType },
+    { title: "Analytics", url: "/analytics", icon: BarChart3 },
+    { title: "Notifications", url: "/notifications", icon: Bell },
   ];
 
   const items = 
