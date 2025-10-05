@@ -63,17 +63,24 @@ export default function UserManagement() {
       const validated = createUserSchema.parse(formData);
       setLoading(true);
 
-      // Create user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      // Create user using signup (this will send confirmation email)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: validated.email,
         password: validated.password,
-        email_confirm: true, // Auto-confirm email for admin-created accounts
-        user_metadata: {
-          name: validated.name,
+        options: {
+          data: {
+            name: validated.name,
+          },
         },
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        // Handle specific error cases
+        if (authError.message.includes("already registered")) {
+          throw new Error("An account with this email already exists");
+        }
+        throw authError;
+      }
 
       if (!authData.user) {
         throw new Error("Failed to create user");
@@ -91,7 +98,7 @@ export default function UserManagement() {
 
       toast({
         title: "User Created Successfully",
-        description: `${validated.name} has been created as ${validated.role}`,
+        description: `${validated.name} has been created as ${validated.role}. They will receive an email to confirm their account.`,
       });
 
       // Reset form
@@ -286,11 +293,12 @@ export default function UserManagement() {
             </div>
 
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-              <h4 className="font-medium mb-2 text-blue-800">Password Requirements:</h4>
+              <h4 className="font-medium mb-2 text-blue-800">Account Creation Process:</h4>
               <div className="space-y-1 text-sm text-blue-700">
-                <div>• Minimum 8 characters long</div>
+                <div>• Password must be at least 8 characters long</div>
                 <div>• Use the "Generate Secure Password" button for a strong password</div>
-                <div>• User will be required to change password on first login</div>
+                <div>• User will receive an email to confirm their account</div>
+                <div>• After confirmation, they can login with the provided credentials</div>
               </div>
             </div>
 
