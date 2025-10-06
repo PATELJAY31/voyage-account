@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -37,6 +38,7 @@ export function FileUpload({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -81,7 +83,7 @@ export function FileUpload({
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       
       // Handle case where expenseId is "new" or undefined
-      const uploadPath = expenseId === "new" || !expenseId ? `temp/${auth.uid()}/${fileName}` : `${expenseId}/${fileName}`;
+      const uploadPath = expenseId === "new" || !expenseId ? `temp/${user?.id}/${fileName}` : `${expenseId}/${fileName}`;
 
       // Upload file to Supabase Storage
       const { data, error } = await supabase.storage
@@ -109,7 +111,7 @@ export function FileUpload({
             file_url: urlData.publicUrl,
             filename: file.name,
             content_type: file.type,
-            uploaded_by: (await supabase.auth.getUser()).data.user?.id,
+            uploaded_by: user?.id,
           })
           .select()
           .single();
