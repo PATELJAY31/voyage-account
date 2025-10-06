@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,8 @@ export default function ExpenseForm() {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [currentExpenseId, setCurrentExpenseId] = useState<string | null>(null);
+  const [requiredFiles, setRequiredFiles] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<string[]>([]);
 
   useEffect(() => {
     if (id && id !== "new") {
@@ -152,6 +155,68 @@ export default function ExpenseForm() {
     ]);
   };
 
+  const moveTempFilesToExpense = async (expenseId: string) => {
+    try {
+      if (!user?.id) {
+        console.error('User not authenticated');
+        return;
+      }
+
+      // Get all temp files for this user
+      const { data: tempFiles, error: listError } = await supabase.storage
+        .from('expense-attachments')
+        .list(`temp/${user.id}`, {
+          limit: 100,
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+
+      if (listError) {
+        console.error('Error listing temp files:', listError);
+        return;
+      }
+
+      if (!tempFiles || tempFiles.length === 0) return;
+
+      // Move each temp file to the expense folder
+      for (const file of tempFiles) {
+        const tempPath = `temp/${user.id}/${file.name}`;
+        const newPath = `${expenseId}/${file.name}`;
+
+        // Copy file to new location
+        const { data: copyData, error: copyError } = await supabase.storage
+          .from('expense-attachments')
+          .copy(tempPath, newPath);
+
+        if (copyError) {
+          console.error('Error copying file:', copyError);
+          continue;
+        }
+
+        // Create attachment record
+        const { data: urlData } = supabase.storage
+          .from('expense-attachments')
+          .getPublicUrl(newPath);
+
+        await supabase
+          .from('attachments')
+          .insert({
+            expense_id: expenseId,
+            file_url: urlData?.publicUrl || '',
+            filename: file.name || 'unknown',
+            content_type: file.metadata?.mimetype || 'image/jpeg',
+            uploaded_by: user.id
+          });
+
+        // Delete temp file
+        await supabase.storage
+          .from('expense-attachments')
+          .remove([tempPath]);
+      }
+    } catch (error) {
+      console.error('Error moving temp files:', error);
+    }
+  };
+
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
     const updated = [...lineItems];
     updated[index] = { ...updated[index], [field]: value };
@@ -187,9 +252,14 @@ export default function ExpenseForm() {
         })
       );
 
-      if (validatedLineItems.length === 0) {
-        throw new Error("At least one line item is required");
-      }
+        if (validatedLineItems.length === 0) {
+          throw new Error("At least one line item is required");
+        }
+
+        // Check if bill photos are uploaded for submission
+        if (status === "submitted" && attachments.length === 0) {
+          throw new Error("Bill photos are required for expense submission. Please upload at least one photo of your receipt or bill.");
+        }
 
       // Prepare data for ExpenseService
       const expenseData: CreateExpenseData | UpdateExpenseData = {
@@ -216,6 +286,9 @@ export default function ExpenseForm() {
         // Create new expense
         const newExpense = await ExpenseService.createExpense(user.id, expenseData as CreateExpenseData);
         setCurrentExpenseId(newExpense.id);
+        
+        // Move temp files to the new expense folder
+        await moveTempFilesToExpense(newExpense.id);
         
         // If submitting, update status
         if (status === "submitted") {
@@ -501,20 +574,51 @@ export default function ExpenseForm() {
         </Card>
       </div>
 
-      {/* File Upload Section */}
-      {(currentExpenseId || isEditing) && (
-        <div className="mt-8">
-          <FileUpload 
-            expenseId={currentExpenseId || id!} 
-            onUploadComplete={() => {
-              toast({
-                title: "Receipt uploaded",
-                description: "Receipt has been attached to this expense",
-              });
-            }}
-          />
-        </div>
-      )}
+      {/* File Upload Section - Required for Submission */}
+      <div className="mt-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Bill Photos
+              <span className="text-red-500 text-sm font-normal">* Required for submission</span>
+            </CardTitle>
+            <CardDescription>
+              Upload photos of your receipts and bills. At least one photo is required to submit the expense.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ErrorBoundary>
+              <FileUpload 
+                expenseId={currentExpenseId || id!} 
+                onUploadComplete={(attachment) => {
+                  if (attachment && attachment.file_url) {
+                    setAttachments(prev => [...prev, attachment.file_url]);
+                    toast({
+                      title: "Bill photo uploaded",
+                      description: "Photo has been attached to this expense",
+                    });
+                  }
+                }}
+                required={true}
+              />
+            </ErrorBoundary>
+            {attachments.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-green-600 font-medium">
+                  ✓ {attachments.length} bill photo{attachments.length > 1 ? 's' : ''} uploaded
+                </p>
+              </div>
+            )}
+            {attachments.length === 0 && (
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ You must upload at least one bill photo to submit this expense.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

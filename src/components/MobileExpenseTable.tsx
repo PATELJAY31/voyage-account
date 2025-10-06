@@ -210,7 +210,7 @@ export function MobileExpenseTable({
                     <Button
                       onClick={handleAction}
                       className="w-full"
-                      disabled={!selectedStatus || (selectedStatus === "under_review" && !selectedEngineer)}
+                      disabled={!selectedStatus || (selectedStatus === "under_review" && (!selectedEngineer || selectedEngineer === "none"))}
                     >
                       {selectedStatus === "approved" && "Approve Expense"}
                       {selectedStatus === "rejected" && "Reject Expense"}
