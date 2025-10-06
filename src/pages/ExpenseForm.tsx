@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -586,19 +587,21 @@ export default function ExpenseForm() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <FileUpload 
-              expenseId={currentExpenseId || id!} 
-              onUploadComplete={(attachment) => {
-                if (attachment && attachment.file_url) {
-                  setAttachments(prev => [...prev, attachment.file_url]);
-                  toast({
-                    title: "Bill photo uploaded",
-                    description: "Photo has been attached to this expense",
-                  });
-                }
-              }}
-              required={true}
-            />
+            <ErrorBoundary>
+              <FileUpload 
+                expenseId={currentExpenseId || id!} 
+                onUploadComplete={(attachment) => {
+                  if (attachment && attachment.file_url) {
+                    setAttachments(prev => [...prev, attachment.file_url]);
+                    toast({
+                      title: "Bill photo uploaded",
+                      description: "Photo has been attached to this expense",
+                    });
+                  }
+                }}
+                required={true}
+              />
+            </ErrorBoundary>
             {attachments.length > 0 && (
               <div className="mt-4">
                 <p className="text-sm text-green-600 font-medium">

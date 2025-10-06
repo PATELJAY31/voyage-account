@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Upload, X, FileText, Image, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 interface Attachment {
   id: string;
@@ -309,17 +310,23 @@ export function FileUpload({
           <div className="space-y-2">
             <h4 className="font-medium">Uploaded Files</h4>
             <div className="space-y-2">
-              {attachments.map((attachment) => (
+              {attachments.filter(attachment => attachment).map((attachment) => (
                 <div
-                  key={attachment.id}
+                  key={attachment.id || Math.random()}
                   className="flex items-center justify-between p-3 border rounded-lg"
                 >
                   <div className="flex items-center gap-3">
-                    {getFileIcon(attachment.content_type)}
+                    {getFileIcon(attachment.content_type || 'image/jpeg')}
                     <div>
-                      <p className="font-medium text-sm">{attachment.filename}</p>
+                      <p className="font-medium text-sm">{attachment.filename || 'Unknown file'}</p>
                       <p className="text-xs text-muted-foreground">
-                        {attachment.content_type} • {format(new Date(attachment.created_at), "MMM d, yyyy")}
+                        {attachment.content_type || 'Unknown type'} • {(() => {
+                          try {
+                            return attachment.created_at ? format(new Date(attachment.created_at), "MMM d, yyyy") : 'Unknown date';
+                          } catch {
+                            return 'Invalid date';
+                          }
+                        })()}
                       </p>
                     </div>
                   </div>
