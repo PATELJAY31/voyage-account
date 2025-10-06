@@ -290,7 +290,7 @@ export default function AdminPanel() {
           title: "Expense Rejected",
           description: "The expense has been rejected",
         });
-      } else if (selectedStatus === "under_review" && selectedEngineer) {
+      } else if (selectedStatus === "under_review" && selectedEngineer && selectedEngineer !== "none") {
         await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
         toast({
           title: "Expense Assigned",
@@ -303,8 +303,10 @@ export default function AdminPanel() {
           updated_at: new Date().toISOString()
         };
 
-        if (selectedEngineer) {
+        if (selectedEngineer && selectedEngineer !== "none") {
           updateData.assigned_engineer_id = selectedEngineer;
+        } else if (selectedEngineer === "none") {
+          updateData.assigned_engineer_id = null;
         }
 
         if (adminComment) {
@@ -731,7 +733,7 @@ export default function AdminPanel() {
                                         <SelectValue placeholder="Select engineer (optional)" />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="">No assignment</SelectItem>
+                                        <SelectItem value="none">No assignment</SelectItem>
                                         {engineers.map((engineer) => (
                                           <SelectItem key={engineer.id} value={engineer.id}>
                                             {engineer.name}
