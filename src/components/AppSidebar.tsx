@@ -57,30 +57,35 @@ export function AppSidebar() {
     employeeItems;
 
   return (
-    <Sidebar>
-      <SidebarContent>
-        <div className="px-6 py-4">
+    <Sidebar className="border-r-0 sm:border-r">
+      <SidebarContent className="px-2 sm:px-0">
+        {/* Mobile-optimized Header */}
+        <div className="px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center gap-2">
-            <Receipt className="h-6 w-6 text-primary" />
-            <span className="font-bold text-lg">ExpenseTracker</span>
+            <Receipt className="h-5 w-5 sm:h-6 sm:w-6 text-primary flex-shrink-0" />
+            <span className="font-bold text-base sm:text-lg truncate">ExpenseTracker</span>
           </div>
         </div>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="px-4 sm:px-6 text-xs sm:text-sm">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="px-2 sm:px-0">
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton asChild className="h-10 sm:h-9">
                     <NavLink 
                       to={item.url}
                       className={({ isActive }) =>
-                        isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
+                        `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          isActive 
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground" 
+                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        }`
                       }
                     >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                      <item.icon className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">{item.title}</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -90,14 +95,14 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="px-2 sm:px-0">
         <Button
           variant="ghost"
-          className="w-full justify-start"
+          className="w-full justify-start h-10 sm:h-9 text-sm"
           onClick={() => signOut()}
         >
-          <LogOut className="mr-2 h-4 w-4" />
-          Sign Out
+          <LogOut className="mr-2 h-4 w-4 flex-shrink-0" />
+          <span className="truncate">Sign Out</span>
         </Button>
       </SidebarFooter>
     </Sidebar>
