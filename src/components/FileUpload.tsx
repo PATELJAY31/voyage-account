@@ -41,23 +41,18 @@ export function FileUpload({
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Function to ensure storage bucket exists
-  const ensureBucketExists = async () => {
+  // Function to check if bucket exists (read-only check)
+  const checkBucketExists = async () => {
     try {
       const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-      if (listError) throw listError;
-      
-      const bucketExists = buckets?.some(bucket => bucket.id === 'expense-attachments');
-      if (!bucketExists) {
-        const { error: createError } = await supabase.storage.createBucket('expense-attachments', {
-          public: false,
-          fileSizeLimit: 10485760, // 10MB
-          allowedMimeTypes: ['image/jpeg', 'image/jpg', 'image/png']
-        });
-        if (createError) throw createError;
+      if (listError) {
+        console.warn('Could not list buckets:', listError);
+        return false;
       }
+      return buckets?.some(bucket => bucket.id === 'expense-attachments') || false;
     } catch (error) {
-      console.error('Error ensuring bucket exists:', error);
+      console.warn('Error checking bucket existence:', error);
+      return false;
     }
   };
 
@@ -75,8 +70,8 @@ export function FileUpload({
       setUploading(true);
       setUploadProgress(0);
       
-      // Ensure bucket exists before uploading
-      await ensureBucketExists();
+      // Check if the main bucket exists
+      const bucketExists = await checkBucketExists();
 
       // Validate file type and size according to spec
       const maxSize = 10 * 1024 * 1024; // 10MB as per spec
@@ -110,18 +105,25 @@ export function FileUpload({
       const uploadPath = expenseId === "new" || !expenseId ? `temp/${user?.id}/${fileName}` : `${expenseId}/${fileName}`;
 
       // Upload file to Supabase Storage
-      let uploadResult = await supabase.storage
-        .from('expense-attachments')
-        .upload(uploadPath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      // If the main bucket fails, try with a fallback bucket
-      if (uploadResult.error && uploadResult.error.message.includes('bucket')) {
-        console.log('Trying fallback bucket...');
+      let uploadResult;
+      let bucketName = 'expense-attachments';
+      
+      if (bucketExists) {
+        // Try the main bucket first
         uploadResult = await supabase.storage
-          .from('receipts') // Fallback to existing bucket
+          .from('expense-attachments')
+          .upload(uploadPath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+      }
+      
+      // If main bucket doesn't exist or upload fails, try fallback bucket
+      if (!bucketExists || (uploadResult && uploadResult.error)) {
+        console.log('Using fallback bucket...');
+        bucketName = 'receipts';
+        uploadResult = await supabase.storage
+          .from('receipts')
           .upload(uploadPath, file, {
             cacheControl: '3600',
             upsert: false
@@ -134,7 +136,6 @@ export function FileUpload({
       }
 
       // Get public URL (use the same bucket that was used for upload)
-      const bucketName = uploadResult.data?.path ? 'expense-attachments' : 'receipts';
       const { data: urlData } = supabase.storage
         .from(bucketName)
         .getPublicUrl(uploadPath);
@@ -207,10 +208,17 @@ export function FileUpload({
       const url = new URL(attachment.file_url);
       const filePath = url.pathname.split('/').slice(-2).join('/');
 
-      // Delete from storage
-      await supabase.storage
+      // Delete from storage (try both buckets)
+      const { error: deleteError1 } = await supabase.storage
         .from('expense-attachments')
         .remove([filePath]);
+      
+      if (deleteError1) {
+        // Try fallback bucket
+        await supabase.storage
+          .from('receipts')
+          .remove([filePath]);
+      }
 
       // Delete from database
       await supabase
@@ -355,3 +363,4 @@ export function FileUpload({
     </Card>
   );
 }
+
