@@ -175,7 +175,7 @@ export default function UserManagement() {
         </p>
       </div>
 
-        {/* Create User Card */}
+      {/* Create User Card */}
         <Card className="shadow-2xl border-0 bg-white/80 backdrop-blur-sm overflow-hidden">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-8">
             <div className="flex items-center gap-3">
@@ -465,7 +465,6 @@ export default function UserManagement() {
             </div>
           </CardContent>
         </Card>
-      </div>
     </div>
   );
 }
