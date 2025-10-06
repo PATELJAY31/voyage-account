@@ -156,6 +156,11 @@ export default function ExpenseForm() {
 
   const moveTempFilesToExpense = async (expenseId: string) => {
     try {
+      if (!user?.id) {
+        console.error('User not authenticated');
+        return;
+      }
+
       // Get all temp files for this user
       const { data: tempFiles, error: listError } = await supabase.storage
         .from('expense-attachments')
@@ -195,8 +200,8 @@ export default function ExpenseForm() {
           .from('attachments')
           .insert({
             expense_id: expenseId,
-            file_url: urlData.publicUrl,
-            filename: file.name,
+            file_url: urlData?.publicUrl || '',
+            filename: file.name || 'unknown',
             content_type: file.metadata?.mimetype || 'image/jpeg',
             uploaded_by: user.id
           });
@@ -584,11 +589,13 @@ export default function ExpenseForm() {
             <FileUpload 
               expenseId={currentExpenseId || id!} 
               onUploadComplete={(attachment) => {
-                setAttachments(prev => [...prev, attachment.file_url]);
-                toast({
-                  title: "Bill photo uploaded",
-                  description: "Photo has been attached to this expense",
-                });
+                if (attachment && attachment.file_url) {
+                  setAttachments(prev => [...prev, attachment.file_url]);
+                  toast({
+                    title: "Bill photo uploaded",
+                    description: "Photo has been attached to this expense",
+                  });
+                }
               }}
               required={true}
             />

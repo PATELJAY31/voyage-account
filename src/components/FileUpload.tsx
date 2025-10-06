@@ -174,7 +174,9 @@ export function FileUpload({
         description: `${file.name} has been uploaded successfully`,
       });
 
-      onUploadComplete?.(attachmentData);
+      if (onUploadComplete) {
+        onUploadComplete(attachmentData || tempAttachment);
+      }
     } catch (error: any) {
       console.error("Upload error:", error);
       const errorMessage = error.message || "Failed to upload file";
