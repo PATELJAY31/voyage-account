@@ -64,7 +64,7 @@ interface Expense {
 }
 
 export default function AdminPanel() {
-  const { userRole } = useAuth();
+  const { user, userRole } = useAuth();
   const { toast } = useToast();
   
   const [users, setUsers] = useState<User[]>([]);
@@ -274,43 +274,65 @@ export default function AdminPanel() {
   };
 
   const updateExpenseStatus = async () => {
-    if (!selectedExpense || !selectedStatus) return;
+    if (!selectedExpense || !selectedStatus || !user) return;
 
     try {
-      const updateData: any = {
-        status: selectedStatus,
-        updated_at: new Date().toISOString()
-      };
-
-      if (selectedEngineer) {
-        updateData.assigned_engineer_id = selectedEngineer;
-      }
-
-      if (adminComment) {
-        updateData.admin_comment = adminComment;
-      }
-
-      const { error } = await supabase
-        .from("expenses")
-        .update(updateData)
-        .eq("id", selectedExpense.id);
-
-      if (error) throw error;
-
-      // Log the action
-      await supabase
-        .from("audit_logs")
-        .insert({
-          expense_id: selectedExpense.id,
-          user_id: (await supabase.auth.getUser()).data.user?.id,
-          action: `Status changed to ${selectedStatus}`,
-          comment: adminComment || null
+      // Use proper service methods for approve/reject
+      if (selectedStatus === "approved") {
+        await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
+        toast({
+          title: "Expense Approved",
+          description: "The expense has been approved successfully",
         });
+      } else if (selectedStatus === "rejected") {
+        await ExpenseService.rejectExpense(selectedExpense.id, user.id, adminComment);
+        toast({
+          title: "Expense Rejected",
+          description: "The expense has been rejected",
+        });
+      } else if (selectedStatus === "under_review" && selectedEngineer) {
+        await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
+        toast({
+          title: "Expense Assigned",
+          description: "The expense has been assigned to an engineer for review",
+        });
+      } else {
+        // For other status changes, use direct update
+        const updateData: any = {
+          status: selectedStatus,
+          updated_at: new Date().toISOString()
+        };
 
-      toast({
-        title: "Success",
-        description: "Expense status updated successfully",
-      });
+        if (selectedEngineer) {
+          updateData.assigned_engineer_id = selectedEngineer;
+        }
+
+        if (adminComment) {
+          updateData.admin_comment = adminComment;
+        }
+
+        const { error } = await supabase
+          .from("expenses")
+          .update(updateData)
+          .eq("id", selectedExpense.id);
+
+        if (error) throw error;
+
+        // Log the action
+        await supabase
+          .from("audit_logs")
+          .insert({
+            expense_id: selectedExpense.id,
+            user_id: user.id,
+            action: `Status changed to ${selectedStatus}`,
+            comment: adminComment || null
+          });
+
+        toast({
+          title: "Success",
+          description: "Expense status updated successfully",
+        });
+      }
 
       setSelectedExpense(null);
       setAdminComment("");
