@@ -58,6 +58,8 @@ export default function ExpenseForm() {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [currentExpenseId, setCurrentExpenseId] = useState<string | null>(null);
+  const [requiredFiles, setRequiredFiles] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<string[]>([]);
 
   useEffect(() => {
     if (id && id !== "new") {
@@ -187,9 +189,14 @@ export default function ExpenseForm() {
         })
       );
 
-      if (validatedLineItems.length === 0) {
-        throw new Error("At least one line item is required");
-      }
+        if (validatedLineItems.length === 0) {
+          throw new Error("At least one line item is required");
+        }
+
+        // Check if bill photos are uploaded for submission
+        if (status === "submitted" && attachments.length === 0) {
+          throw new Error("Bill photos are required for expense submission. Please upload at least one photo of your receipt or bill.");
+        }
 
       // Prepare data for ExpenseService
       const expenseData: CreateExpenseData | UpdateExpenseData = {
@@ -501,20 +508,47 @@ export default function ExpenseForm() {
         </Card>
       </div>
 
-      {/* File Upload Section */}
-      {(currentExpenseId || isEditing) && (
-        <div className="mt-8">
-          <FileUpload 
-            expenseId={currentExpenseId || id!} 
-            onUploadComplete={() => {
-              toast({
-                title: "Receipt uploaded",
-                description: "Receipt has been attached to this expense",
-              });
-            }}
-          />
-        </div>
-      )}
+      {/* File Upload Section - Required for Submission */}
+      <div className="mt-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Bill Photos
+              <span className="text-red-500 text-sm font-normal">* Required for submission</span>
+            </CardTitle>
+            <CardDescription>
+              Upload photos of your receipts and bills. At least one photo is required to submit the expense.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FileUpload 
+              expenseId={currentExpenseId || id!} 
+              onUploadComplete={(attachment) => {
+                setAttachments(prev => [...prev, attachment.file_url]);
+                toast({
+                  title: "Bill photo uploaded",
+                  description: "Photo has been attached to this expense",
+                });
+              }}
+              required={true}
+            />
+            {attachments.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-green-600 font-medium">
+                  ✓ {attachments.length} bill photo{attachments.length > 1 ? 's' : ''} uploaded
+                </p>
+              </div>
+            )}
+            {attachments.length === 0 && (
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ You must upload at least one bill photo to submit this expense.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

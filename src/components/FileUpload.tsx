@@ -21,6 +21,7 @@ interface FileUploadProps {
   onUploadComplete?: (attachment: Attachment) => void;
   onUploadError?: (error: string) => void;
   className?: string;
+  required?: boolean;
 }
 
 export function FileUpload({ 
@@ -28,7 +29,8 @@ export function FileUpload({
   lineItemId, 
   onUploadComplete, 
   onUploadError,
-  className 
+  className,
+  required = false
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -56,23 +58,22 @@ export function FileUpload({
         throw new Error("File size must be less than 10MB");
       }
 
-      // Only allow PDF, PNG, JPG as per spec
+      // Only allow PNG, JPG for bill photos (images only)
       const allowedTypes = [
         'image/jpeg',
         'image/jpg', 
-        'image/png',
-        'application/pdf'
+        'image/png'
       ];
 
       if (!allowedTypes.includes(file.type)) {
-        throw new Error("Only PDF, PNG, and JPG files are allowed");
+        throw new Error("Only PNG and JPG image files are allowed for bill photos");
       }
 
-      // Additional validation for file extensions
-      const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+      // Additional validation for file extensions (images only)
+      const allowedExtensions = ['.png', '.jpg', '.jpeg'];
       const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
       if (!allowedExtensions.includes(fileExtension)) {
-        throw new Error("File extension not supported. Only PDF, PNG, and JPG files are allowed.");
+        throw new Error("Only PNG and JPG image files are allowed for bill photos");
       }
 
       // Create unique filename
@@ -82,7 +83,7 @@ export function FileUpload({
 
       // Upload file to Supabase Storage
       const { data, error } = await supabase.storage
-        .from('receipts')
+        .from('expense-attachments')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false
@@ -92,7 +93,7 @@ export function FileUpload({
 
       // Get public URL
       const { data: urlData } = supabase.storage
-        .from('receipts')
+        .from('expense-attachments')
         .getPublicUrl(filePath);
 
       // Save attachment record to database
@@ -150,7 +151,7 @@ export function FileUpload({
 
       // Delete from storage
       await supabase.storage
-        .from('receipts')
+        .from('expense-attachments')
         .remove([filePath]);
 
       // Delete from database
@@ -208,7 +209,7 @@ export function FileUpload({
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.png,.jpg,.jpeg"
+            accept=".png,.jpg,.jpeg"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -224,11 +225,17 @@ export function FileUpload({
                 Choose Files
               </Button>
               <p className="text-sm text-muted-foreground mt-2">
-                or drag and drop files here
+                or drag and drop bill photos here
+              </p>
+              <p className="text-xs text-muted-foreground">
+                PNG, JPG only (max 10MB each)
+                {required && (
+                  <span className="text-red-500 font-medium"> * Required for submission</span>
+                )}
               </p>
             </div>
             <p className="text-xs text-muted-foreground">
-              Supports: PDF, PNG, JPG files only (max 10MB each)
+              Supports: PNG, JPG image files only (max 10MB each)
             </p>
           </div>
 
