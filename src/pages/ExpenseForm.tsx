@@ -154,6 +154,63 @@ export default function ExpenseForm() {
     ]);
   };
 
+  const moveTempFilesToExpense = async (expenseId: string) => {
+    try {
+      // Get all temp files for this user
+      const { data: tempFiles, error: listError } = await supabase.storage
+        .from('expense-attachments')
+        .list(`temp/${user.id}`, {
+          limit: 100,
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+
+      if (listError) {
+        console.error('Error listing temp files:', listError);
+        return;
+      }
+
+      if (!tempFiles || tempFiles.length === 0) return;
+
+      // Move each temp file to the expense folder
+      for (const file of tempFiles) {
+        const tempPath = `temp/${user.id}/${file.name}`;
+        const newPath = `${expenseId}/${file.name}`;
+
+        // Copy file to new location
+        const { data: copyData, error: copyError } = await supabase.storage
+          .from('expense-attachments')
+          .copy(tempPath, newPath);
+
+        if (copyError) {
+          console.error('Error copying file:', copyError);
+          continue;
+        }
+
+        // Create attachment record
+        const { data: urlData } = supabase.storage
+          .from('expense-attachments')
+          .getPublicUrl(newPath);
+
+        await supabase
+          .from('attachments')
+          .insert({
+            expense_id: expenseId,
+            file_url: urlData.publicUrl,
+            filename: file.name,
+            content_type: file.metadata?.mimetype || 'image/jpeg',
+            uploaded_by: user.id
+          });
+
+        // Delete temp file
+        await supabase.storage
+          .from('expense-attachments')
+          .remove([tempPath]);
+      }
+    } catch (error) {
+      console.error('Error moving temp files:', error);
+    }
+  };
+
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
     const updated = [...lineItems];
     updated[index] = { ...updated[index], [field]: value };
@@ -223,6 +280,9 @@ export default function ExpenseForm() {
         // Create new expense
         const newExpense = await ExpenseService.createExpense(user.id, expenseData as CreateExpenseData);
         setCurrentExpenseId(newExpense.id);
+        
+        // Move temp files to the new expense folder
+        await moveTempFilesToExpense(newExpense.id);
         
         // If submitting, update status
         if (status === "submitted") {

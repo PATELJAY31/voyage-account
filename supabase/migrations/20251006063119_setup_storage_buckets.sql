@@ -14,6 +14,11 @@ CREATE POLICY "Users can upload expense attachments"
   WITH CHECK (
     bucket_id = 'expense-attachments' AND
     auth.uid() IS NOT NULL AND
+    (
+      -- Allow uploads to temp folder for new expenses
+      (storage.foldername(name))[1] = 'temp' AND
+      (storage.foldername(name))[2] = auth.uid()::text
+    ) OR
     -- Check if user has access to the expense
     EXISTS (
       SELECT 1 FROM public.expenses
@@ -27,6 +32,11 @@ CREATE POLICY "Users can view expense attachments"
   USING (
     bucket_id = 'expense-attachments' AND
     auth.uid() IS NOT NULL AND
+    (
+      -- Allow viewing temp files for the user
+      (storage.foldername(name))[1] = 'temp' AND
+      (storage.foldername(name))[2] = auth.uid()::text
+    ) OR
     -- Check if user has access to the expense
     EXISTS (
       SELECT 1 FROM public.expenses

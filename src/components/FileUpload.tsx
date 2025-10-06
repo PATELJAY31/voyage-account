@@ -79,12 +79,14 @@ export function FileUpload({
       // Create unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `${expenseId}/${fileName}`;
+      
+      // Handle case where expenseId is "new" or undefined
+      const uploadPath = expenseId === "new" || !expenseId ? `temp/${auth.uid()}/${fileName}` : `${expenseId}/${fileName}`;
 
       // Upload file to Supabase Storage
       const { data, error } = await supabase.storage
         .from('expense-attachments')
-        .upload(filePath, file, {
+        .upload(uploadPath, file, {
           cacheControl: '3600',
           upsert: false
         });
@@ -94,25 +96,38 @@ export function FileUpload({
       // Get public URL
       const { data: urlData } = supabase.storage
         .from('expense-attachments')
-        .getPublicUrl(filePath);
+        .getPublicUrl(uploadPath);
 
-      // Save attachment record to database
-      const { data: attachmentData, error: attachmentError } = await supabase
-        .from('attachments')
-        .insert({
-          expense_id: expenseId,
-          line_item_id: lineItemId,
-          file_url: urlData.publicUrl,
-          filename: file.name,
-          content_type: file.type,
-          uploaded_by: (await supabase.auth.getUser()).data.user?.id,
-        })
-        .select()
-        .single();
+      // Save attachment record to database (only if expenseId is not "new")
+      let attachmentData = null;
+      if (expenseId !== "new" && expenseId) {
+        const { data, error: attachmentError } = await supabase
+          .from('attachments')
+          .insert({
+            expense_id: expenseId,
+            line_item_id: lineItemId,
+            file_url: urlData.publicUrl,
+            filename: file.name,
+            content_type: file.type,
+            uploaded_by: (await supabase.auth.getUser()).data.user?.id,
+          })
+          .select()
+          .single();
+        
+        if (attachmentError) throw attachmentError;
+        attachmentData = data;
+      }
 
-      if (attachmentError) throw attachmentError;
+      // Create a temporary attachment object for new expenses
+      const tempAttachment = {
+        id: `temp-${Date.now()}`,
+        filename: file.name,
+        content_type: file.type,
+        file_url: urlData.publicUrl,
+        created_at: new Date().toISOString()
+      };
 
-      setAttachments(prev => [...prev, attachmentData]);
+      setAttachments(prev => [...prev, attachmentData || tempAttachment]);
       
       toast({
         title: "Upload successful",
