@@ -40,6 +40,26 @@ export function FileUpload({
   const { toast } = useToast();
   const { user } = useAuth();
 
+  // Function to ensure storage bucket exists
+  const ensureBucketExists = async () => {
+    try {
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+      if (listError) throw listError;
+      
+      const bucketExists = buckets?.some(bucket => bucket.id === 'expense-attachments');
+      if (!bucketExists) {
+        const { error: createError } = await supabase.storage.createBucket('expense-attachments', {
+          public: false,
+          fileSizeLimit: 10485760, // 10MB
+          allowedMimeTypes: ['image/jpeg', 'image/jpg', 'image/png']
+        });
+        if (createError) throw createError;
+      }
+    } catch (error) {
+      console.error('Error ensuring bucket exists:', error);
+    }
+  };
+
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -53,6 +73,9 @@ export function FileUpload({
     try {
       setUploading(true);
       setUploadProgress(0);
+      
+      // Ensure bucket exists before uploading
+      await ensureBucketExists();
 
       // Validate file type and size according to spec
       const maxSize = 10 * 1024 * 1024; // 10MB as per spec
@@ -86,18 +109,33 @@ export function FileUpload({
       const uploadPath = expenseId === "new" || !expenseId ? `temp/${user?.id}/${fileName}` : `${expenseId}/${fileName}`;
 
       // Upload file to Supabase Storage
-      const { data, error } = await supabase.storage
+      let uploadResult = await supabase.storage
         .from('expense-attachments')
         .upload(uploadPath, file, {
           cacheControl: '3600',
           upsert: false
         });
 
-      if (error) throw error;
+      // If the main bucket fails, try with a fallback bucket
+      if (uploadResult.error && uploadResult.error.message.includes('bucket')) {
+        console.log('Trying fallback bucket...');
+        uploadResult = await supabase.storage
+          .from('receipts') // Fallback to existing bucket
+          .upload(uploadPath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+      }
 
-      // Get public URL
+      if (uploadResult.error) {
+        console.error('Storage upload error:', uploadResult.error);
+        throw new Error(`Failed to upload file: ${uploadResult.error.message}`);
+      }
+
+      // Get public URL (use the same bucket that was used for upload)
+      const bucketName = uploadResult.data?.path ? 'expense-attachments' : 'receipts';
       const { data: urlData } = supabase.storage
-        .from('expense-attachments')
+        .from(bucketName)
         .getPublicUrl(uploadPath);
 
       // Save attachment record to database (only if expenseId is not "new")
