@@ -250,42 +250,48 @@ export default function ExpenseForm() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+      {/* Mobile-optimized Header */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
             {isEditing ? "Edit Expense" : "New Expense"}
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm sm:text-base text-muted-foreground">
             {isEditing ? "Update your expense details" : "Create a new expense claim"}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             onClick={() => navigate("/expenses")}
             disabled={loading}
+            className="w-full sm:w-auto"
           >
             Cancel
           </Button>
           <Button
             onClick={() => saveExpense("draft")}
             disabled={loading}
+            className="w-full sm:w-auto"
           >
             <Save className="mr-2 h-4 w-4" />
-            Save Draft
+            <span className="hidden sm:inline">Save Draft</span>
+            <span className="sm:hidden">Draft</span>
           </Button>
           <Button
             onClick={() => saveExpense("submitted")}
             disabled={loading || lineItems.length === 0}
+            className="w-full sm:w-auto"
           >
             <Send className="mr-2 h-4 w-4" />
-            Submit
+            <span className="hidden sm:inline">Submit</span>
+            <span className="sm:hidden">Submit</span>
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Expense Details */}
         <Card>
           <CardHeader>
@@ -382,13 +388,13 @@ export default function ExpenseForm() {
 
         {/* Line Items */}
         <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
+          <CardHeader className="pb-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
               <div>
-                <CardTitle>Expense Items</CardTitle>
-                <CardDescription>Add individual expense items</CardDescription>
+                <CardTitle className="text-lg">Expense Items</CardTitle>
+                <CardDescription className="text-sm">Add individual expense items</CardDescription>
               </div>
-              <Button onClick={addLineItem} size="sm">
+              <Button onClick={addLineItem} size="sm" className="w-full sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Item
               </Button>
