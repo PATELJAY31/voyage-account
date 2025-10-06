@@ -41,20 +41,6 @@ export function FileUpload({
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Function to check if bucket exists (read-only check)
-  const checkBucketExists = async () => {
-    try {
-      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-      if (listError) {
-        console.warn('Could not list buckets:', listError);
-        return false;
-      }
-      return buckets?.some(bucket => bucket.id === 'expense-attachments') || false;
-    } catch (error) {
-      console.warn('Error checking bucket existence:', error);
-      return false;
-    }
-  };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -70,9 +56,6 @@ export function FileUpload({
       setUploading(true);
       setUploadProgress(0);
       
-      // Check if the main bucket exists
-      const bucketExists = await checkBucketExists();
-
       // Validate file type and size according to spec
       const maxSize = 10 * 1024 * 1024; // 10MB as per spec
       if (file.size > maxSize) {
@@ -104,31 +87,14 @@ export function FileUpload({
       // Handle case where expenseId is "new" or undefined
       const uploadPath = expenseId === "new" || !expenseId ? `temp/${user?.id}/${fileName}` : `${expenseId}/${fileName}`;
 
-      // Upload file to Supabase Storage
-      let uploadResult;
-      let bucketName = 'expense-attachments';
-      
-      if (bucketExists) {
-        // Try the main bucket first
-        uploadResult = await supabase.storage
-          .from('expense-attachments')
-          .upload(uploadPath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-      }
-      
-      // If main bucket doesn't exist or upload fails, try fallback bucket
-      if (!bucketExists || (uploadResult && uploadResult.error)) {
-        console.log('Using fallback bucket...');
-        bucketName = 'receipts';
-        uploadResult = await supabase.storage
-          .from('receipts')
-          .upload(uploadPath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-      }
+      // Upload file to Supabase Storage (use receipts bucket as primary)
+      const bucketName = 'receipts';
+      const uploadResult = await supabase.storage
+        .from('receipts')
+        .upload(uploadPath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (uploadResult.error) {
         console.error('Storage upload error:', uploadResult.error);
@@ -208,17 +174,10 @@ export function FileUpload({
       const url = new URL(attachment.file_url);
       const filePath = url.pathname.split('/').slice(-2).join('/');
 
-      // Delete from storage (try both buckets)
-      const { error: deleteError1 } = await supabase.storage
-        .from('expense-attachments')
+      // Delete from storage
+      await supabase.storage
+        .from('receipts')
         .remove([filePath]);
-      
-      if (deleteError1) {
-        // Try fallback bucket
-        await supabase.storage
-          .from('receipts')
-          .remove([filePath]);
-      }
 
       // Delete from database
       await supabase
