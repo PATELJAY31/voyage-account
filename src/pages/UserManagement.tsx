@@ -161,20 +161,19 @@ export default function UserManagement() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-6">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header Section */}
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-lg">
-            <UserPlus className="h-8 w-8 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-            User Management
-          </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Create and manage user accounts for your organization with role-based access control
-          </p>
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+      {/* Mobile-optimized Header Section */}
+      <div className="text-center space-y-3 sm:space-y-4">
+        <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl sm:rounded-2xl shadow-lg">
+          <UserPlus className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
         </div>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+          User Management
+        </h1>
+        <p className="text-sm sm:text-base lg:text-lg text-gray-600 max-w-2xl mx-auto px-4">
+          Create and manage user accounts for your organization with role-based access control
+        </p>
+      </div>
 
         {/* Create User Card */}
         <Card className="shadow-2xl border-0 bg-white/80 backdrop-blur-sm overflow-hidden">
