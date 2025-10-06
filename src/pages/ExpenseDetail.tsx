@@ -89,18 +89,37 @@ export default function ExpenseDetail() {
     try {
       setLoading(true);
 
-      // Fetch expense with user and engineer info
+      // Fetch expense data
       const { data: expenseData, error: expenseError } = await supabase
         .from("expenses")
-        .select(`
-          *,
-          profiles!inner(name, email),
-          engineer:assigned_engineer_id(profiles(name))
-        `)
+        .select("*")
         .eq("id", id)
         .single();
 
       if (expenseError) throw expenseError;
+
+      // Fetch user profile
+      const { data: userProfile, error: userProfileError } = await supabase
+        .from("profiles")
+        .select("name, email")
+        .eq("user_id", expenseData.user_id)
+        .single();
+
+      if (userProfileError) throw userProfileError;
+
+      // Fetch engineer profile if assigned
+      let engineerProfile = null;
+      if (expenseData.assigned_engineer_id) {
+        const { data: engineerData, error: engineerError } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("user_id", expenseData.assigned_engineer_id)
+          .single();
+        
+        if (!engineerError) {
+          engineerProfile = engineerData;
+        }
+      }
 
       // Check if user has permission to view this expense
       const canView = 
@@ -120,9 +139,9 @@ export default function ExpenseDetail() {
 
       setExpense({
         ...expenseData,
-        user_name: expenseData.profiles.name,
-        user_email: expenseData.profiles.email,
-        assigned_engineer_name: expenseData.engineer?.profiles?.name,
+        user_name: userProfile.name,
+        user_email: userProfile.email,
+        assigned_engineer_name: engineerProfile?.name,
         total_amount: Number(expenseData.total_amount)
       });
 
@@ -149,18 +168,29 @@ export default function ExpenseDetail() {
       // Fetch audit logs
       const { data: auditData, error: auditError } = await supabase
         .from("audit_logs")
-        .select(`
-          *,
-          profiles!inner(name)
-        `)
+        .select("*")
         .eq("expense_id", id)
         .order("created_at", { ascending: false });
 
       if (auditError) throw auditError;
-      setAuditLogs(auditData?.map(log => ({
-        ...log,
-        user_name: log.profiles.name
-      })) || []);
+
+      // Fetch user profiles for audit logs
+      const auditLogsWithNames = await Promise.all(
+        (auditData || []).map(async (log) => {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("name")
+            .eq("user_id", log.user_id)
+            .single();
+          
+          return {
+            ...log,
+            user_name: profileData?.name || "Unknown User"
+          };
+        })
+      );
+
+      setAuditLogs(auditLogsWithNames);
 
     } catch (error) {
       console.error("Error fetching expense details:", error);
