@@ -37,6 +37,7 @@ import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { MobileExpenseTable } from "@/components/MobileExpenseTable";
+import { formatINR } from "@/lib/format";
 
 interface User {
   id: string;
@@ -457,13 +458,13 @@ export default function AdminPanel() {
 
   const exportExpenses = () => {
     const csvContent = [
-      ["Employee", "Email", "Title", "Destination", "Amount", "Status", "Created Date"],
+      ["Employee", "Email", "Title", "Destination", "Amount (INR)", "Status", "Created Date"],
       ...filteredExpenses.map(expense => [
         expense.user_name,
         expense.user_email,
         expense.title,
         expense.destination,
-        `$${expense.total_amount.toFixed(2)}`,
+        formatINR(expense.total_amount),
         expense.status,
         format(new Date(expense.created_at), "MMM d, yyyy")
       ])
@@ -585,7 +586,7 @@ export default function AdminPanel() {
             <div className="flex items-center justify-between">
               <div className="space-y-1 sm:space-y-2 min-w-0">
                 <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Amount</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">${stats.totalAmount.toFixed(2)}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{formatINR(stats.totalAmount)}</p>
               </div>
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
                 <DollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
@@ -705,7 +706,7 @@ export default function AdminPanel() {
                         </TableCell>
                         <TableCell className="font-medium">{expense.title}</TableCell>
                         <TableCell>{expense.destination}</TableCell>
-                        <TableCell>${expense.total_amount.toFixed(2)}</TableCell>
+                        <TableCell>{formatINR(expense.total_amount)}</TableCell>
                         <TableCell>
                           <StatusBadge status={expense.status as any} />
                         </TableCell>
@@ -741,7 +742,7 @@ export default function AdminPanel() {
                                     </div>
                                     <div>
                                       <label className="text-sm font-medium">Amount</label>
-                                      <p className="text-lg font-semibold">${selectedExpense.total_amount.toFixed(2)}</p>
+                                      <p className="text-lg font-semibold">{formatINR(selectedExpense.total_amount)}</p>
                                     </div>
                                   </div>
 

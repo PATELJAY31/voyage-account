@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { FileUpload } from "@/components/FileUpload";
 import { ExpenseService, CreateExpenseData, UpdateExpenseData } from "@/services/ExpenseService";
 import { z } from "zod";
+import { formatINR } from "@/lib/format";
 
 const expenseSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -596,7 +597,7 @@ export default function ExpenseForm() {
                 <div className="border-t pt-4">
                   <div className="flex justify-between items-center text-lg font-semibold">
                     <span>Total Amount:</span>
-                    <span>${calculateTotal().toFixed(2)}</span>
+                    <span>{formatINR(calculateTotal())}</span>
                   </div>
                 </div>
               </>
