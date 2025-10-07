@@ -164,7 +164,7 @@ export default function ExpenseForm() {
 
       // Get all temp files for this user
       const { data: tempFiles, error: listError } = await supabase.storage
-        .from('expense-attachments')
+        .from('receipts')
         .list(`temp/${user.id}`, {
           limit: 100,
           sortBy: { column: 'created_at', order: 'desc' }
@@ -184,7 +184,7 @@ export default function ExpenseForm() {
 
         // Copy file to new location
         const { data: copyData, error: copyError } = await supabase.storage
-          .from('expense-attachments')
+          .from('receipts')
           .copy(tempPath, newPath);
 
         if (copyError) {
@@ -194,7 +194,7 @@ export default function ExpenseForm() {
 
         // Create attachment record
         const { data: urlData } = supabase.storage
-          .from('expense-attachments')
+          .from('receipts')
           .getPublicUrl(newPath);
 
         await supabase
@@ -209,7 +209,7 @@ export default function ExpenseForm() {
 
         // Delete temp file
         await supabase.storage
-          .from('expense-attachments')
+          .from('receipts')
           .remove([tempPath]);
       }
     } catch (error) {
@@ -304,6 +304,14 @@ export default function ExpenseForm() {
       navigate("/expenses");
     } catch (error: any) {
       console.error("Error saving expense:", error);
+      console.error("Error details:", {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        stack: error?.stack
+      });
+      
       if (error instanceof z.ZodError) {
         toast({
           variant: "destructive",
@@ -311,10 +319,20 @@ export default function ExpenseForm() {
           description: error.errors[0].message,
         });
       } else {
+        // Provide more detailed error information
+        let errorMessage = "Failed to save expense";
+        if (error?.message) {
+          errorMessage = error.message;
+        } else if (error?.code) {
+          errorMessage = `Database error (${error.code}): ${error.message || 'Unknown error'}`;
+        } else if (typeof error === 'object' && error !== null) {
+          errorMessage = JSON.stringify(error, null, 2);
+        }
+        
         toast({
           variant: "destructive",
           title: "Error",
-          description: error.message || "Failed to save expense",
+          description: errorMessage,
         });
       }
     } finally {

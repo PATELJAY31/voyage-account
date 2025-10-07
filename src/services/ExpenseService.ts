@@ -83,7 +83,10 @@ export class ExpenseService {
       .select()
       .single();
 
-    if (expenseError) throw expenseError;
+    if (expenseError) {
+      console.error("Expense creation error:", expenseError);
+      throw new Error(`Failed to create expense: ${expenseError.message || 'Unknown error'}`);
+    }
 
     // Insert line items
     const lineItemsData: LineItemInsert[] = data.line_items.map(item => ({
@@ -99,7 +102,10 @@ export class ExpenseService {
       .insert(lineItemsData)
       .select();
 
-    if (lineItemsError) throw lineItemsError;
+    if (lineItemsError) {
+      console.error("Line items creation error:", lineItemsError);
+      throw new Error(`Failed to create line items: ${lineItemsError.message || 'Unknown error'}`);
+    }
 
     // Log the action
     await this.logAction(expense.id, userId, "expense_created", "Expense created");

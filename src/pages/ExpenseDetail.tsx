@@ -163,7 +163,38 @@ export default function ExpenseDetail() {
         .order("created_at");
 
       if (attachmentsError) throw attachmentsError;
-      setAttachments(attachmentsData || []);
+      // Normalize attachment URLs to ensure they are valid public URLs from the active bucket
+      const normalizedAttachments = (attachmentsData || []).map((att) => {
+        const asUrl = att.file_url || "";
+
+        // Case 1: Already a full URL
+        if (asUrl.startsWith("http")) {
+          try {
+            const u = new URL(asUrl);
+            // If legacy bucket is referenced, rebuild a receipts public URL using the same object key
+            if (u.pathname.includes("/object/public/expense-attachments/")) {
+              const key = u.pathname.split("/object/public/expense-attachments/")[1] || "";
+              const { data } = supabase.storage.from("receipts").getPublicUrl(key);
+              return { ...att, file_url: data.publicUrl };
+            }
+            return att;
+          } catch {
+            // If parsing fails, fall back to treating it as a path below
+          }
+        }
+
+        // Case 2: Path-like value stored (e.g., "receipts/{expenseId}/file.png" or "expense-attachments/{...}")
+        const parts = asUrl.split("/");
+        const bucketMaybe = parts[0] || "receipts";
+        const objectKey = parts.slice(1).join("/");
+        const bucket = bucketMaybe === "expense-attachments" ? "receipts" : (bucketMaybe || "receipts");
+        const key = objectKey || asUrl; // if not in bucket/key format, use raw string
+
+        const { data } = supabase.storage.from(bucket).getPublicUrl(key);
+        return { ...att, file_url: data.publicUrl };
+      });
+
+      setAttachments(normalizedAttachments);
 
       // Fetch audit logs
       const { data: auditData, error: auditError } = await supabase
