@@ -19,7 +19,7 @@ export interface CreateExpenseData {
   purpose?: string;
   line_items: Array<{
     date: string;
-    category: "travel" | "lodging" | "food" | "other";
+    category: string; // accept any category defined in DB enum v2
     amount: number;
     description: string;
   }>;
@@ -37,7 +37,7 @@ export interface UpdateExpenseData {
   line_items?: Array<{
     id?: string;
     date: string;
-    category: "travel" | "lodging" | "food" | "other";
+    category: string; // accept any category defined in DB enum v2
     amount: number;
     description: string;
   }>;

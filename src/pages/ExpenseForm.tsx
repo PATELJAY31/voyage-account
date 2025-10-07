@@ -29,7 +29,7 @@ const expenseSchema = z.object({
 
 const lineItemSchema = z.object({
   date: z.date(),
-  category: z.enum(["travel", "lodging", "food", "other"]),
+  category: z.string().min(1, "Category is required"),
   amount: z.number().positive("Amount must be positive"),
   description: z.string().min(1, "Description is required"),
 });
@@ -37,7 +37,7 @@ const lineItemSchema = z.object({
 interface LineItem {
   id?: string;
   date: Date;
-  category: "travel" | "lodging" | "food" | "other";
+  category: string;
   amount: number;
   description: string;
 }
@@ -396,17 +396,17 @@ export default function ExpenseForm() {
                 id="title"
                 value={expense.title}
                 onChange={(e) => setExpense({ ...expense, title: e.target.value })}
-                placeholder="e.g., Business Trip to New York"
+                placeholder="e.g., Office supplies purchase"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="destination">Destination *</Label>
+              <Label htmlFor="destination">Vendor / Location *</Label>
               <Input
                 id="destination"
                 value={expense.destination}
                 onChange={(e) => setExpense({ ...expense, destination: e.target.value })}
-                placeholder="e.g., New York, NY"
+                placeholder="e.g., Amazon, New York, NY"
               />
             </div>
 
@@ -470,7 +470,7 @@ export default function ExpenseForm() {
                 id="purpose"
                 value={expense.purpose}
                 onChange={(e) => setExpense({ ...expense, purpose: e.target.value })}
-                placeholder="Describe the purpose of this trip..."
+                placeholder="Describe the purpose of this expense..."
                 rows={3}
               />
             </div>
@@ -551,6 +551,19 @@ export default function ExpenseForm() {
                             <SelectItem value="travel">Travel</SelectItem>
                             <SelectItem value="lodging">Lodging</SelectItem>
                             <SelectItem value="food">Food</SelectItem>
+                            <SelectItem value="transport">Transport</SelectItem>
+                            <SelectItem value="office_supplies">Office Supplies</SelectItem>
+                            <SelectItem value="software">Software</SelectItem>
+                            <SelectItem value="utilities">Utilities</SelectItem>
+                            <SelectItem value="marketing">Marketing</SelectItem>
+                            <SelectItem value="training">Training</SelectItem>
+                            <SelectItem value="health_wellness">Health & Wellness</SelectItem>
+                            <SelectItem value="equipment">Equipment</SelectItem>
+                            <SelectItem value="mileage">Mileage</SelectItem>
+                            <SelectItem value="internet_phone">Internet & Phone</SelectItem>
+                            <SelectItem value="entertainment">Entertainment</SelectItem>
+                            <SelectItem value="professional_services">Professional Services</SelectItem>
+                            <SelectItem value="rent">Rent</SelectItem>
                             <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
