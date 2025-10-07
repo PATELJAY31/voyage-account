@@ -47,6 +47,14 @@ interface User {
   is_active: boolean;
 }
 
+interface Attachment {
+  id: string;
+  filename: string;
+  content_type: string;
+  file_url: string;
+  created_at: string;
+}
+
 interface Expense {
   id: string;
   title: string;
@@ -77,6 +85,7 @@ export default function AdminPanel() {
   const [engineers, setEngineers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   useEffect(() => {
     if (userRole === "admin") {
@@ -98,6 +107,61 @@ export default function AdminPanel() {
       setLoading(false);
     }
   };
+
+  const normalizeReceiptUrl = (url: string): string => {
+    try {
+      // If it's already a receipts public URL, keep as is
+      if (url.startsWith("http")) {
+        // Try to extract a key from known bucket paths and rebuild with receipts
+        if (url.includes("/storage/v1/object/public/receipts/")) {
+          return url;
+        }
+        const expenseAttachmentsIdx = url.indexOf("/storage/v1/object/public/expense-attachments/");
+        if (expenseAttachmentsIdx !== -1) {
+          const key = url.substring(expenseAttachmentsIdx + "/storage/v1/object/public/expense-attachments/".length);
+          const { data } = supabase.storage.from("receipts").getPublicUrl(key);
+          return data.publicUrl;
+        }
+        // Fallback: return original
+        return url;
+      }
+      // Path-only stored (e.g., "{expenseId}/filename" or "temp/{userId}/filename")
+      const { data } = supabase.storage.from("receipts").getPublicUrl(url);
+      return data.publicUrl;
+    } catch {
+      return url;
+    }
+  };
+
+  const fetchAttachments = async (expenseId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("attachments")
+        .select("id, filename, content_type, file_url, created_at")
+        .eq("expense_id", expenseId)
+        .order("created_at");
+
+      if (error) throw error;
+
+      const normalized = (data || []).map(a => ({
+        ...a,
+        file_url: normalizeReceiptUrl(a.file_url || ""),
+      }));
+
+      setAttachments(normalized);
+    } catch (e) {
+      console.error("Error fetching attachments:", e);
+      setAttachments([]);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedExpense) {
+      fetchAttachments(selectedExpense.id);
+    } else {
+      setAttachments([]);
+    }
+  }, [selectedExpense]);
 
   const fetchUsers = async () => {
     // First get profiles
@@ -752,6 +816,30 @@ export default function AdminPanel() {
                                       className="mt-1"
                                     />
                                   </div>
+
+                                  {attachments.length > 0 && (
+                                    <div className="space-y-2">
+                                      <label className="text-sm font-medium">Receipts & Attachments</label>
+                                      <div className="space-y-2">
+                                        {attachments.map((a) => (
+                                          <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                            <div className="flex items-center gap-3">
+                                              {a.content_type?.startsWith("image/") ? (
+                                                <img src={a.file_url} alt={a.filename} className="h-14 w-14 object-cover rounded" />
+                                              ) : (
+                                                <div className="h-14 w-14 flex items-center justify-center bg-gray-100 rounded text-xs">FILE</div>
+                                              )}
+                                              <div>
+                                                <p className="font-medium text-sm">{a.filename}</p>
+                                                <p className="text-xs text-muted-foreground">{a.content_type} • {format(new Date(a.created_at), "MMM d, yyyy")}</p>
+                                              </div>
+                                            </div>
+                                            <Button variant="outline" size="sm" onClick={() => window.open(a.file_url, "_blank")}>View</Button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
