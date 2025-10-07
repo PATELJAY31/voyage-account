@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, DollarSign, Clock, CheckCircle, XCircle, TrendingUp, Users, Receipt } from "lucide-react";
+import { formatINR } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
 
 interface DashboardStats {
@@ -67,13 +68,13 @@ export default function Dashboard() {
     },
     {
       title: "Pending Amount",
-      value: `$${stats.pendingAmount.toFixed(2)}`,
+      value: formatINR(stats.pendingAmount),
       icon: Clock,
       description: "Awaiting approval",
     },
     {
       title: "Approved Amount",
-      value: `$${stats.approvedAmount.toFixed(2)}`,
+      value: formatINR(stats.approvedAmount),
       icon: CheckCircle,
       description: "Approved expenses",
     },
