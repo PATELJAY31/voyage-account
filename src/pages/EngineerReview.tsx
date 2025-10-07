@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ExpenseService } from "@/services/ExpenseService";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
+import { formatINR } from "@/lib/format";
 
 interface Expense {
   id: string;
@@ -246,7 +247,7 @@ export default function EngineerReview() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.totalAmount.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatINR(stats.totalAmount)}</div>
           </CardContent>
         </Card>
       </div>
@@ -292,7 +293,7 @@ export default function EngineerReview() {
                     </TableCell>
                     <TableCell className="font-medium">{expense.title}</TableCell>
                     <TableCell>{expense.destination}</TableCell>
-                    <TableCell>${expense.total_amount.toFixed(2)}</TableCell>
+                    <TableCell>{formatINR(expense.total_amount)}</TableCell>
                     <TableCell>
                       <StatusBadge status={expense.status as any} />
                     </TableCell>
@@ -351,7 +352,7 @@ export default function EngineerReview() {
                                       <div className="flex items-center gap-2">
                                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                                         <span className="text-lg font-semibold">
-                                          ${selectedExpense.total_amount.toFixed(2)}
+                                          {formatINR(selectedExpense.total_amount)}
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-2">
@@ -429,7 +430,7 @@ export default function EngineerReview() {
                                             </TableCell>
                                             <TableCell>{item.description}</TableCell>
                                             <TableCell className="text-right">
-                                              ${item.amount.toFixed(2)}
+                                              {formatINR(item.amount)}
                                             </TableCell>
                                           </TableRow>
                                         ))}

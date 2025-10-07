@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
+import { formatINR } from "@/lib/format";
 
 interface Expense {
   id: string;
@@ -371,7 +372,7 @@ export default function ExpenseDetail() {
                     <DollarSign className="h-4 w-4" />
                     Total Amount
                   </div>
-                  <p className="text-2xl font-bold">${expense.total_amount.toFixed(2)}</p>
+                  <p className="text-2xl font-bold">{formatINR(expense.total_amount)}</p>
                 </div>
               </div>
 
@@ -460,7 +461,7 @@ export default function ExpenseDetail() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold">${item.amount.toFixed(2)}</p>
+                        <p className="font-semibold">{formatINR(item.amount)}</p>
                       </div>
                     </div>
                   ))}

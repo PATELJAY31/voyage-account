@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Eye } from "lucide-react";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
+import { formatINR } from "@/lib/format";
 
 interface Expense {
   id: string;
@@ -78,7 +79,7 @@ export function MobileExpenseTable({
                 <p className="text-xs text-gray-500 truncate">{expense.user_name}</p>
               </div>
               <div className="text-right flex-shrink-0 ml-2">
-                <p className="font-bold text-sm">${expense.total_amount.toFixed(2)}</p>
+                <p className="font-bold text-sm">{formatINR(expense.total_amount)}</p>
                 <StatusBadge status={expense.status as any} />
               </div>
             </div>
@@ -121,7 +122,7 @@ export function MobileExpenseTable({
                       </div>
                       <div>
                         <label className="text-sm font-medium">Amount</label>
-                        <p className="text-sm text-muted-foreground">${expense.total_amount.toFixed(2)}</p>
+                        <p className="text-sm text-muted-foreground">{formatINR(expense.total_amount)}</p>
                       </div>
                       <div>
                         <label className="text-sm font-medium">Status</label>

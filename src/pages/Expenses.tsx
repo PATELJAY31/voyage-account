@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
+import { formatINR } from "@/lib/format";
 
 interface Expense {
   id: string;
@@ -119,13 +120,13 @@ export default function Expenses() {
 
   const exportExpenses = () => {
     const csvContent = [
-      ["Title", "Destination", "Start Date", "End Date", "Amount", "Status", "Created"],
+      ["Title", "Destination", "Start Date", "End Date", "Amount (INR)", "Status", "Created"],
       ...filteredExpenses.map(expense => [
         expense.title,
         expense.destination,
         format(new Date(expense.trip_start), "yyyy-MM-dd"),
         format(new Date(expense.trip_end), "yyyy-MM-dd"),
-        expense.total_amount.toFixed(2),
+        formatINR(expense.total_amount),
         expense.status,
         format(new Date(expense.created_at), "yyyy-MM-dd")
       ])
@@ -261,7 +262,7 @@ export default function Expenses() {
                       {format(new Date(expense.trip_start), "MMM d")} -{" "}
                       {format(new Date(expense.trip_end), "MMM d, yyyy")}
                     </TableCell>
-                    <TableCell>${Number(expense.total_amount).toFixed(2)}</TableCell>
+                    <TableCell>{formatINR(expense.total_amount)}</TableCell>
                     <TableCell>
                       <StatusBadge status={expense.status as any} />
                     </TableCell>
