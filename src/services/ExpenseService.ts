@@ -19,7 +19,7 @@ export interface CreateExpenseData {
   purpose?: string;
   line_items: Array<{
     date: string;
-    category: "travel" | "lodging" | "food" | "other";
+    category: string; // accept any category defined in DB enum v2
     amount: number;
     description: string;
   }>;
@@ -37,7 +37,7 @@ export interface UpdateExpenseData {
   line_items?: Array<{
     id?: string;
     date: string;
-    category: "travel" | "lodging" | "food" | "other";
+    category: string; // accept any category defined in DB enum v2
     amount: number;
     description: string;
   }>;
@@ -83,7 +83,10 @@ export class ExpenseService {
       .select()
       .single();
 
-    if (expenseError) throw expenseError;
+    if (expenseError) {
+      console.error("Expense creation error:", expenseError);
+      throw new Error(`Failed to create expense: ${expenseError.message || 'Unknown error'}`);
+    }
 
     // Insert line items
     const lineItemsData: LineItemInsert[] = data.line_items.map(item => ({
@@ -99,7 +102,10 @@ export class ExpenseService {
       .insert(lineItemsData)
       .select();
 
-    if (lineItemsError) throw lineItemsError;
+    if (lineItemsError) {
+      console.error("Line items creation error:", lineItemsError);
+      throw new Error(`Failed to create line items: ${lineItemsError.message || 'Unknown error'}`);
+    }
 
     // Log the action
     await this.logAction(expense.id, userId, "expense_created", "Expense created");

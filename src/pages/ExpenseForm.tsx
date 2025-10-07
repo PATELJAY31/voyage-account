@@ -29,7 +29,7 @@ const expenseSchema = z.object({
 
 const lineItemSchema = z.object({
   date: z.date(),
-  category: z.enum(["travel", "lodging", "food", "other"]),
+  category: z.string().min(1, "Category is required"),
   amount: z.number().positive("Amount must be positive"),
   description: z.string().min(1, "Description is required"),
 });
@@ -37,7 +37,7 @@ const lineItemSchema = z.object({
 interface LineItem {
   id?: string;
   date: Date;
-  category: "travel" | "lodging" | "food" | "other";
+  category: string;
   amount: number;
   description: string;
 }
@@ -164,7 +164,7 @@ export default function ExpenseForm() {
 
       // Get all temp files for this user
       const { data: tempFiles, error: listError } = await supabase.storage
-        .from('expense-attachments')
+        .from('receipts')
         .list(`temp/${user.id}`, {
           limit: 100,
           sortBy: { column: 'created_at', order: 'desc' }
@@ -184,7 +184,7 @@ export default function ExpenseForm() {
 
         // Copy file to new location
         const { data: copyData, error: copyError } = await supabase.storage
-          .from('expense-attachments')
+          .from('receipts')
           .copy(tempPath, newPath);
 
         if (copyError) {
@@ -194,7 +194,7 @@ export default function ExpenseForm() {
 
         // Create attachment record
         const { data: urlData } = supabase.storage
-          .from('expense-attachments')
+          .from('receipts')
           .getPublicUrl(newPath);
 
         await supabase
@@ -209,7 +209,7 @@ export default function ExpenseForm() {
 
         // Delete temp file
         await supabase.storage
-          .from('expense-attachments')
+          .from('receipts')
           .remove([tempPath]);
       }
     } catch (error) {
@@ -304,6 +304,14 @@ export default function ExpenseForm() {
       navigate("/expenses");
     } catch (error: any) {
       console.error("Error saving expense:", error);
+      console.error("Error details:", {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        stack: error?.stack
+      });
+      
       if (error instanceof z.ZodError) {
         toast({
           variant: "destructive",
@@ -311,10 +319,20 @@ export default function ExpenseForm() {
           description: error.errors[0].message,
         });
       } else {
+        // Provide more detailed error information
+        let errorMessage = "Failed to save expense";
+        if (error?.message) {
+          errorMessage = error.message;
+        } else if (error?.code) {
+          errorMessage = `Database error (${error.code}): ${error.message || 'Unknown error'}`;
+        } else if (typeof error === 'object' && error !== null) {
+          errorMessage = JSON.stringify(error, null, 2);
+        }
+        
         toast({
           variant: "destructive",
           title: "Error",
-          description: error.message || "Failed to save expense",
+          description: errorMessage,
         });
       }
     } finally {
@@ -378,17 +396,17 @@ export default function ExpenseForm() {
                 id="title"
                 value={expense.title}
                 onChange={(e) => setExpense({ ...expense, title: e.target.value })}
-                placeholder="e.g., Business Trip to New York"
+                placeholder="e.g., Office supplies purchase"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="destination">Destination *</Label>
+              <Label htmlFor="destination">Vendor / Location *</Label>
               <Input
                 id="destination"
                 value={expense.destination}
                 onChange={(e) => setExpense({ ...expense, destination: e.target.value })}
-                placeholder="e.g., New York, NY"
+                placeholder="e.g., Amazon, New York, NY"
               />
             </div>
 
@@ -452,7 +470,7 @@ export default function ExpenseForm() {
                 id="purpose"
                 value={expense.purpose}
                 onChange={(e) => setExpense({ ...expense, purpose: e.target.value })}
-                placeholder="Describe the purpose of this trip..."
+                placeholder="Describe the purpose of this expense..."
                 rows={3}
               />
             </div>
@@ -533,6 +551,19 @@ export default function ExpenseForm() {
                             <SelectItem value="travel">Travel</SelectItem>
                             <SelectItem value="lodging">Lodging</SelectItem>
                             <SelectItem value="food">Food</SelectItem>
+                            <SelectItem value="transport">Transport</SelectItem>
+                            <SelectItem value="office_supplies">Office Supplies</SelectItem>
+                            <SelectItem value="software">Software</SelectItem>
+                            <SelectItem value="utilities">Utilities</SelectItem>
+                            <SelectItem value="marketing">Marketing</SelectItem>
+                            <SelectItem value="training">Training</SelectItem>
+                            <SelectItem value="health_wellness">Health & Wellness</SelectItem>
+                            <SelectItem value="equipment">Equipment</SelectItem>
+                            <SelectItem value="mileage">Mileage</SelectItem>
+                            <SelectItem value="internet_phone">Internet & Phone</SelectItem>
+                            <SelectItem value="entertainment">Entertainment</SelectItem>
+                            <SelectItem value="professional_services">Professional Services</SelectItem>
+                            <SelectItem value="rent">Rent</SelectItem>
                             <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
