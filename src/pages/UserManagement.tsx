@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,15 +15,16 @@ import { z } from "zod";
 const createUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
-  role: z.enum(["admin", "engineer", "employee"]),
+  role: z.enum(["admin", "engineer", "employee", "cashier"]),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
 interface CreateUserForm {
   name: string;
   email: string;
-  role: "admin" | "engineer" | "employee";
+  role: "admin" | "engineer" | "employee" | "cashier";
   password: string;
+  reportingEngineerId?: string | "none";
 }
 
 export default function UserManagement() {
@@ -29,12 +32,50 @@ export default function UserManagement() {
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(false);
+  const [engineers, setEngineers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [formData, setFormData] = useState<CreateUserForm>({
     name: "",
     email: "",
     role: "employee",
     password: "",
+    reportingEngineerId: "none",
   });
+
+  useEffect(() => {
+    // Load engineers for assignment dropdown
+    const loadEngineers = async () => {
+      try {
+        // 1) Get user ids with engineer role
+        const { data: roleRows, error: rolesError } = await supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .eq("role", "engineer");
+
+        if (rolesError) throw rolesError;
+
+        const engineerIds = (roleRows || []).map(r => r.user_id);
+        if (engineerIds.length === 0) {
+          setEngineers([]);
+          return;
+        }
+
+        // 2) Get profiles for those engineers
+        const { data: profileRows, error: profilesError } = await supabase
+          .from("profiles")
+          .select("user_id, name, email")
+          .in("user_id", engineerIds);
+
+        if (profilesError) throw profilesError;
+
+        const list = (profileRows || []).map(p => ({ id: p.user_id, name: p.name, email: p.email }));
+        setEngineers(list);
+      } catch (e) {
+        console.error("Error loading engineers:", e);
+      }
+    };
+
+    loadEngineers();
+  }, []);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,8 +103,21 @@ export default function UserManagement() {
       const validated = createUserSchema.parse(formData);
       setLoading(true);
 
+      // Create a temporary client with no session persistence so admin session isn't replaced
+      const tempSupabase = createClient<Database>(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            storage: undefined,
+          },
+        }
+      );
+
       // Create user using signup (this will send confirmation email)
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const { data: authData, error: authError } = await tempSupabase.auth.signUp({
         email: validated.email,
         password: validated.password,
         options: {
@@ -95,6 +149,16 @@ export default function UserManagement() {
 
       if (roleError) throw roleError;
 
+      // If creating an employee and an engineer is chosen, link them
+      if (validated.role === "employee" && formData.reportingEngineerId && formData.reportingEngineerId !== "none") {
+        const { error: profileUpdateError } = await supabase
+          .from("profiles")
+          .update({ reporting_engineer_id: formData.reportingEngineerId })
+          .eq("user_id", authData.user.id);
+
+        if (profileUpdateError) throw profileUpdateError;
+      }
+
       toast({
         title: "User Created Successfully",
         description: `${validated.name} has been created as ${validated.role}. They will receive an email to confirm their account.`,
@@ -106,6 +170,7 @@ export default function UserManagement() {
         email: "",
         role: "employee",
         password: "",
+        reportingEngineerId: "none",
       });
 
     } catch (error: any) {
@@ -247,7 +312,7 @@ export default function UserManagement() {
                       <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-blue-600 transition-colors z-10" />
                       <Select
                         value={formData.role}
-                        onValueChange={(value: "admin" | "engineer" | "employee") => 
+                        onValueChange={(value: "admin" | "engineer" | "employee" | "cashier") => 
                           setFormData(prev => ({ ...prev, role: value }))
                         }
                       >
@@ -288,9 +353,42 @@ export default function UserManagement() {
                               </div>
                             </div>
                           </SelectItem>
+                          <SelectItem value="cashier">
+                            <div className="flex items-center gap-3 py-2">
+                              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                                <Settings className="h-4 w-4 text-amber-600" />
+                              </div>
+                              <div>
+                                <div className="font-medium">Cashier</div>
+                                <div className="text-xs text-gray-500">Mark expenses as paid and manage payouts</div>
+                              </div>
+                            </div>
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="reportingEngineer" className="text-sm font-medium text-gray-700">Assign Engineer (for Employee)</Label>
+                    <Select
+                      value={formData.reportingEngineerId || "none"}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, reportingEngineerId: value }))}
+                      disabled={formData.role !== "employee"}
+                    >
+                      <SelectTrigger className="h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 transition-all duration-200">
+                        <SelectValue placeholder="Select engineer" />
+                      </SelectTrigger>
+                      <SelectContent className="border-0 shadow-xl">
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {engineers.map(e => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.name} ({e.email})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">If set, all expenses will auto-assign to this engineer.</p>
                   </div>
 
                   <div className="space-y-3">

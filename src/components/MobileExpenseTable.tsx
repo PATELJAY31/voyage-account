@@ -18,6 +18,7 @@ interface Expense {
   created_at: string;
   user_name: string;
   user_email: string;
+  user_balance: number;
   purpose?: string;
   trip_start: string;
   trip_end: string;
@@ -89,6 +90,16 @@ export function MobileExpenseTable({
               <div className="flex justify-between">
                 <span>Destination:</span>
                 <span className="truncate ml-2">{expense.destination}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Employee Balance:</span>
+                <span className={`font-medium ${
+                  expense.user_balance >= expense.total_amount 
+                    ? 'text-green-600' 
+                    : 'text-red-600'
+                }`}>
+                  {formatINR(expense.user_balance)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Created:</span>

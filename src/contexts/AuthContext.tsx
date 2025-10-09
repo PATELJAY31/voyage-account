@@ -2,12 +2,19 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-type AppRole = "admin" | "engineer" | "employee";
+type AppRole = "admin" | "engineer" | "employee" | "cashier";
+
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+}
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   userRole: AppRole | null;
+  userProfile: UserProfile | null;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -18,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [userRole, setUserRole] = useState<AppRole | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,13 +35,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Fetch user role when session changes
+        // Fetch user role and profile when session changes
         if (session?.user) {
           setTimeout(() => {
             fetchUserRole(session.user.id);
+            fetchUserProfile(session.user.id);
           }, 0);
         } else {
           setUserRole(null);
+          setUserProfile(null);
           setLoading(false);
         }
       }
@@ -45,6 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchUserRole(session.user.id);
+        fetchUserProfile(session.user.id);
       } else {
         setLoading(false);
       }
@@ -65,6 +76,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUserRole(data?.role || null);
     } catch (error) {
       console.error("Error fetching user role:", error);
+    }
+  };
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email")
+        .eq("user_id", userId)
+        .single();
+
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
     } finally {
       setLoading(false);
     }
@@ -75,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, userRole, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, userRole, userProfile, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

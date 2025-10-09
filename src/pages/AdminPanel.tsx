@@ -46,6 +46,8 @@ interface User {
   role: string;
   created_at: string;
   is_active: boolean;
+  balance?: number | null;
+  reporting_engineer_id?: string | null;
 }
 
 interface Attachment {
@@ -68,6 +70,7 @@ interface Expense {
   user_id: string;
   user_name: string;
   user_email: string;
+  user_balance: number;
   assigned_engineer_id?: string;
   admin_comment?: string;
 }
@@ -168,7 +171,7 @@ export default function AdminPanel() {
     // First get profiles
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, user_id, name, email, created_at, is_active")
+      .select("id, user_id, name, email, created_at, is_active, balance, reporting_engineer_id")
       .order("created_at", { ascending: false });
 
     if (profilesError) throw profilesError;
@@ -191,7 +194,9 @@ export default function AdminPanel() {
         name: profile.name,
         role: userRole?.role || "employee",
         created_at: profile.created_at,
-        is_active: profile.is_active
+        is_active: profile.is_active,
+        balance: profile.balance ?? 0,
+        reporting_engineer_id: profile.reporting_engineer_id ?? null
       };
     });
 
@@ -199,10 +204,11 @@ export default function AdminPanel() {
   };
 
   const fetchExpenses = async () => {
-    // Get expenses first
+    // Admin should only see expenses after engineer verification
     const { data: expensesData, error: expensesError } = await supabase
       .from("expenses")
       .select("*")
+      .in("status", ["verified", "approved", "paid"]) 
       .order("created_at", { ascending: false });
 
     if (expensesError) {
@@ -218,7 +224,7 @@ export default function AdminPanel() {
     const userIds = [...new Set(expensesData.map(e => e.user_id))];
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("user_id, name, email")
+      .select("user_id, name, email, balance")
       .in("user_id", userIds);
 
     if (profilesError) {
@@ -232,6 +238,7 @@ export default function AdminPanel() {
         ...expense,
         user_name: profile?.name || "Unknown User",
         user_email: profile?.email || "unknown@example.com",
+        user_balance: profile?.balance ?? 0,
         total_amount: Number(expense.total_amount)
       };
     });
@@ -347,7 +354,7 @@ export default function AdminPanel() {
         await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
         toast({
           title: "Expense Approved",
-          description: "The expense has been approved successfully",
+          description: `Expense approved and ₹${selectedExpense.total_amount} deducted from employee balance.`,
         });
       } else if (selectedStatus === "rejected") {
         await ExpenseService.rejectExpense(selectedExpense.id, user.id, adminComment);
@@ -690,6 +697,7 @@ export default function AdminPanel() {
                         <TableHead className="font-semibold">Title</TableHead>
                         <TableHead className="font-semibold">Destination</TableHead>
                         <TableHead className="font-semibold">Amount</TableHead>
+                        <TableHead className="font-semibold">Balance</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
                         <TableHead className="text-right font-semibold">Actions</TableHead>
@@ -708,6 +716,20 @@ export default function AdminPanel() {
                         <TableCell>{expense.destination}</TableCell>
                         <TableCell>{formatINR(expense.total_amount)}</TableCell>
                         <TableCell>
+                          <div className={`font-medium ${
+                            expense.user_balance >= expense.total_amount 
+                              ? 'text-green-600' 
+                              : 'text-red-600'
+                          }`}>
+                            {formatINR(expense.user_balance)}
+                          </div>
+                          {expense.user_balance < expense.total_amount && (
+                            <div className="text-xs text-red-500">
+                              Insufficient balance
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <StatusBadge status={expense.status as any} />
                         </TableCell>
                         <TableCell>
@@ -724,7 +746,7 @@ export default function AdminPanel() {
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
+                            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto sm:max-w-3xl md:max-w-4xl">
                               <DialogHeader>
                                 <DialogTitle>Expense Details</DialogTitle>
                                 <DialogDescription>
@@ -776,7 +798,11 @@ export default function AdminPanel() {
 
                                   <div>
                                     <label className="text-sm font-medium">Update Status</label>
-                                    <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                                    <Select 
+                                      value={selectedStatus} 
+                                      onValueChange={setSelectedStatus}
+                                      disabled={['approved','paid','rejected'].includes(selectedExpense.status)}
+                                    >
                                       <SelectTrigger className="mt-1">
                                         <SelectValue placeholder="Select new status" />
                                       </SelectTrigger>
@@ -791,22 +817,7 @@ export default function AdminPanel() {
                                     </Select>
                                   </div>
 
-                                  <div>
-                                    <label className="text-sm font-medium">Assign Engineer</label>
-                                    <Select value={selectedEngineer} onValueChange={setSelectedEngineer}>
-                                      <SelectTrigger className="mt-1">
-                                        <SelectValue placeholder="Select engineer (optional)" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="none">No assignment</SelectItem>
-                                        {engineers.map((engineer) => (
-                                          <SelectItem key={engineer.id} value={engineer.id}>
-                                            {engineer.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
+                                  {/* Assign Engineer section removed - engineer assignment is managed in Users tab or via auto-assignment */}
 
                                   <div>
                                     <label className="text-sm font-medium">Admin Comment</label>
@@ -848,7 +859,10 @@ export default function AdminPanel() {
                                 <Button variant="outline" onClick={() => setSelectedExpense(null)}>
                                   Cancel
                                 </Button>
-                                <Button onClick={updateExpenseStatus} disabled={!selectedStatus}>
+                                <Button 
+                                  onClick={updateExpenseStatus} 
+                                  disabled={!selectedStatus || ['approved','paid','rejected'].includes(selectedExpense?.status || '')}
+                                >
                                   Update Status
                                 </Button>
                               </DialogFooter>
@@ -881,6 +895,8 @@ export default function AdminPanel() {
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Role</TableHead>
+                      <TableHead>Engineer</TableHead>
+                      <TableHead>Balance</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Joined</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -895,6 +911,53 @@ export default function AdminPanel() {
                           <Badge variant={user.role === "admin" ? "default" : "secondary"}>
                             {user.role}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {user.role === 'employee' ? (
+                            <Select
+                              value={user.reporting_engineer_id || "none"}
+                              onValueChange={async (value) => {
+                                const newEngineerId = value === "none" ? null : value;
+                                await supabase
+                                  .from('profiles')
+                                  .update({ reporting_engineer_id: newEngineerId })
+                                  .eq('user_id', user.id);
+                                fetchUsers();
+                              }}
+                            >
+                              <SelectTrigger className="w-56 h-8">
+                                <SelectValue placeholder="Select engineer" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Unassigned</SelectItem>
+                                {engineers.map((eng) => (
+                                  <SelectItem key={eng.id} value={eng.id}>
+                                    {eng.name} ({eng.email})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              value={(user.balance ?? 0).toString()}
+                              onChange={async (e) => {
+                                const newVal = parseFloat(e.target.value || '0');
+                                await supabase
+                                  .from('profiles')
+                                  .update({ balance: newVal })
+                                  .eq('user_id', user.id);
+                                fetchUsers();
+                              }}
+                              className="w-28 h-8"
+                            />
+                            <span className="text-xs text-muted-foreground">INR</span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge variant={user.is_active ? "success" : "destructive"}>
@@ -915,6 +978,7 @@ export default function AdminPanel() {
                             <SelectContent>
                               <SelectItem value="employee">Employee</SelectItem>
                               <SelectItem value="engineer">Engineer</SelectItem>
+                              <SelectItem value="cashier">Cashier</SelectItem>
                               <SelectItem value="admin">Admin</SelectItem>
                             </SelectContent>
                           </Select>

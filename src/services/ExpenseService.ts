@@ -252,13 +252,28 @@ export class ExpenseService {
       throw new Error("Cannot submit expense without line items");
     }
 
-    // Update status to submitted
+    // Find employee's reporting engineer
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("reporting_engineer_id")
+      .eq("user_id", userId)
+      .single();
+
+    if (profileError) throw profileError;
+
+    // If a reporting engineer is set, auto-assign and move to under_review
+    // Otherwise, keep as submitted for admin to assign
+    const updatePayload: any = {
+      status: profile?.reporting_engineer_id ? "under_review" : "submitted",
+      updated_at: new Date().toISOString(),
+    };
+    if (profile?.reporting_engineer_id) {
+      updatePayload.assigned_engineer_id = profile.reporting_engineer_id;
+    }
+
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
-      .update({
-        status: "submitted",
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", expenseId)
       .select()
       .single();
@@ -266,7 +281,10 @@ export class ExpenseService {
     if (updateError) throw updateError;
 
     // Log the action
-    await this.logAction(expenseId, userId, "expense_submitted", "Expense submitted for review");
+    const logMsg = profile?.reporting_engineer_id
+      ? `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`
+      : "Expense submitted for review";
+    await this.logAction(expenseId, userId, "expense_submitted", logMsg);
 
     return updatedExpense;
   }
@@ -326,6 +344,17 @@ export class ExpenseService {
       throw new Error("You don't have permission to review this expense");
     }
 
+    // Ensure expense is not finalized
+    const { data: current, error: curErr } = await supabase
+      .from("expenses")
+      .select("status")
+      .eq("id", expenseId)
+      .single();
+    if (curErr) throw curErr;
+    if (["approved", "paid", "rejected"].includes(current.status)) {
+      throw new Error("This expense is finalized and cannot be updated");
+    }
+
     // Update expense status
     const status = verified ? "verified" : "rejected";
     const { data: updatedExpense, error: updateError } = await supabase
@@ -361,6 +390,42 @@ export class ExpenseService {
       throw new Error("Only administrators can approve expenses");
     }
 
+    // Fetch expense first for amount and user_id
+    const { data: expense, error: fetchError } = await supabase
+      .from('expenses')
+      .select('id, user_id, total_amount, title, status')
+      .eq('id', expenseId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // Check if expense is verified (engineer approval required)
+    if (expense.status === "approved" || expense.status === "paid") {
+      throw new Error("This expense is already finalized");
+    }
+    if (expense.status !== "verified") {
+      throw new Error("Expense must be verified by an engineer before admin approval");
+    }
+
+    // Get current balance before approval
+    const { data: profile, error: profError } = await supabase
+      .from('profiles')
+      .select('balance, name')
+      .eq('user_id', expense.user_id)
+      .single();
+
+    if (profError) throw profError;
+
+    const currentBalance = Number(profile?.balance ?? 0);
+    const expenseAmount = Number(expense.total_amount);
+    
+    // Check if user has sufficient balance
+    if (currentBalance < expenseAmount) {
+      throw new Error(
+        `Insufficient balance. Employee ${profile?.name} has ₹${currentBalance.toFixed(2)} but expense requires ₹${expenseAmount.toFixed(2)}. Please add balance before approving.`
+      );
+    }
+
     // Update expense
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
@@ -375,8 +440,29 @@ export class ExpenseService {
 
     if (updateError) throw updateError;
 
-    // Log the action
-    await this.logAction(expenseId, adminId, "expense_approved", comment);
+    // Deduct employee balance
+    const newBalance = currentBalance - expenseAmount;
+    const { error: balanceUpdateError } = await supabase
+      .from('profiles')
+      .update({ balance: newBalance })
+      .eq('user_id', expense.user_id);
+
+    if (balanceUpdateError) {
+      // If balance update fails, revert expense status
+      await supabase
+        .from("expenses")
+        .update({
+          status: "verified",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", expenseId);
+      
+      throw new Error("Failed to deduct balance. Expense approval reverted.");
+    }
+
+    // Log the action with balance information
+    const logComment = `${comment || ''} Balance deducted: ₹${expenseAmount.toFixed(2)}. Remaining balance: ₹${newBalance.toFixed(2)}`.trim();
+    await this.logAction(expenseId, adminId, "expense_approved", logComment);
 
     return updatedExpense;
   }

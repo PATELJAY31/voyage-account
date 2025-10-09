@@ -1,7 +1,61 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
+import { useAuth } from "@/contexts/AuthContext";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { formatINR } from "@/lib/format";
+import { Wallet } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const { userProfile, userRole, user } = useAuth();
+  const [userBalance, setUserBalance] = useState<number | null>(null);
+  
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getRoleDisplayName = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return 'Administrator';
+      case 'engineer':
+        return 'Engineer';
+      case 'employee':
+        return 'Employee';
+      case 'cashier':
+        return 'Cashier';
+      default:
+        return 'User';
+    }
+  };
+
+  useEffect(() => {
+    if (user && userRole === 'employee') {
+      fetchUserBalance();
+    }
+  }, [user, userRole]);
+
+  const fetchUserBalance = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("balance")
+        .eq("user_id", user?.id)
+        .single();
+
+      if (error) throw error;
+      setUserBalance(data?.balance ?? 0);
+    } catch (error) {
+      console.error("Error fetching user balance:", error);
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -16,8 +70,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   Expense Management
                 </h1>
                 <p className="text-xs text-gray-500 hidden sm:block">
-                  Travel Expense Management System
+                  Expense Management System
                 </p>
+              </div>
+              
+              {/* User Profile Section */}
+              <div className="flex items-center gap-3">
+                {/* Balance indicator for employees */}
+                {userRole === 'employee' && userBalance !== null && (
+                  <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-lg">
+                    <Wallet className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-700">
+                      {formatINR(userBalance)}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-medium text-gray-900">
+                    {userProfile?.name || 'Loading...'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {userRole ? getRoleDisplayName(userRole) : ''}
+                  </p>
+                </div>
+                <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm">
+                    {userProfile?.name ? getInitials(userProfile.name) : 'U'}
+                  </AvatarFallback>
+                </Avatar>
               </div>
             </div>
           </header>

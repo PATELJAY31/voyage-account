@@ -37,6 +37,7 @@ export function AppSidebar() {
   const engineerItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Review Expenses", url: "/review", icon: FileText },
+    { title: "Balances", url: "/balances", icon: FileText },
     { title: "Templates", url: "/templates", icon: FileType },
     { title: "Analytics", url: "/analytics", icon: BarChart3 },
     { title: "Notifications", url: "/notifications", icon: Bell },
@@ -45,8 +46,17 @@ export function AppSidebar() {
   const adminItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "All Expenses", url: "/admin/expenses", icon: Receipt },
+    { title: "Balances", url: "/balances", icon: FileText },
     { title: "Manage Users", url: "/admin/users", icon: Users },
     { title: "Templates", url: "/templates", icon: FileType },
+    { title: "Analytics", url: "/analytics", icon: BarChart3 },
+    { title: "Notifications", url: "/notifications", icon: Bell },
+  ];
+
+  const cashierItems = [
+    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+    { title: "All Expenses", url: "/admin/expenses", icon: Receipt },
+    { title: "Balances", url: "/balances", icon: FileText },
     { title: "Analytics", url: "/analytics", icon: BarChart3 },
     { title: "Notifications", url: "/notifications", icon: Bell },
   ];
@@ -54,6 +64,7 @@ export function AppSidebar() {
   const items = 
     userRole === "admin" ? adminItems :
     userRole === "engineer" ? engineerItems :
+    userRole === "cashier" ? cashierItems :
     employeeItems;
 
   return (
