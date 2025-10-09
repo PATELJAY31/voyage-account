@@ -188,6 +188,7 @@ export type Database = {
           created_at: string | null
           email: string
           id: string
+          balance: number | null
           is_active: boolean | null
           name: string
           updated_at: string | null
@@ -197,6 +198,7 @@ export type Database = {
           created_at?: string | null
           email: string
           id?: string
+          balance?: number | null
           is_active?: boolean | null
           name: string
           updated_at?: string | null
@@ -206,6 +208,7 @@ export type Database = {
           created_at?: string | null
           email?: string
           id?: string
+          balance?: number | null
           is_active?: boolean | null
           name?: string
           updated_at?: string | null
@@ -248,7 +251,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "engineer" | "employee"
+      app_role: "admin" | "engineer" | "employee" | "cashier"
       expense_category: "travel" | "lodging" | "food" | "other"
       expense_status:
         | "draft"

@@ -18,6 +18,7 @@ import ExpenseTemplates from "./pages/ExpenseTemplates";
 import Notifications from "./pages/Notifications";
 import UserManagement from "./pages/UserManagement";
 import NotFound from "./pages/NotFound";
+import Balances from "./pages/Balances";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,16 @@ const App = () => (
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/auth" element={<Auth />} />
             <Route
+              path="/balances"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "cashier", "engineer"]}>
+                  <Layout>
+                    <Balances />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/dashboard"
               element={
                 <ProtectedRoute>
@@ -44,7 +55,7 @@ const App = () => (
             <Route
               path="/expenses"
               element={
-                <ProtectedRoute allowedRoles={["employee", "admin"]}>
+                <ProtectedRoute allowedRoles={["employee", "admin", "cashier"]}>
                   <Layout>
                     <Expenses />
                   </Layout>
@@ -54,7 +65,7 @@ const App = () => (
             <Route
               path="/expenses/new"
               element={
-                <ProtectedRoute allowedRoles={["employee", "admin"]}>
+                <ProtectedRoute allowedRoles={["employee", "admin", "cashier"]}>
                   <Layout>
                     <ExpenseForm />
                   </Layout>
@@ -64,7 +75,7 @@ const App = () => (
             <Route
               path="/expenses/:id"
               element={
-                <ProtectedRoute allowedRoles={["employee", "admin", "engineer"]}>
+                <ProtectedRoute allowedRoles={["employee", "admin", "engineer", "cashier"]}>
                   <Layout>
                     <ExpenseDetail />
                   </Layout>
@@ -74,7 +85,7 @@ const App = () => (
             <Route
               path="/expenses/:id/edit"
               element={
-                <ProtectedRoute allowedRoles={["employee", "admin"]}>
+                <ProtectedRoute allowedRoles={["employee", "admin", "cashier"]}>
                   <Layout>
                     <ExpenseForm />
                   </Layout>
@@ -84,7 +95,7 @@ const App = () => (
             <Route
               path="/admin/expenses"
               element={
-                <ProtectedRoute allowedRoles={["admin"]}>
+                <ProtectedRoute allowedRoles={["admin", "cashier"]}>
                   <Layout>
                     <AdminPanel />
                   </Layout>
@@ -114,7 +125,7 @@ const App = () => (
             <Route
               path="/analytics"
               element={
-                <ProtectedRoute allowedRoles={["employee", "admin"]}>
+                <ProtectedRoute allowedRoles={["employee", "admin", "cashier"]}>
                   <Layout>
                     <Analytics />
                   </Layout>
@@ -124,7 +135,7 @@ const App = () => (
             <Route
               path="/templates"
               element={
-                <ProtectedRoute allowedRoles={["employee", "admin"]}>
+                <ProtectedRoute allowedRoles={["employee", "admin", "cashier"]}>
                   <Layout>
                     <ExpenseTemplates />
                   </Layout>
@@ -134,7 +145,7 @@ const App = () => (
             <Route
               path="/notifications"
               element={
-                <ProtectedRoute allowedRoles={["employee", "admin", "engineer"]}>
+                <ProtectedRoute allowedRoles={["employee", "admin", "engineer", "cashier"]}>
                   <Layout>
                     <Notifications />
                   </Layout>

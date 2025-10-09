@@ -84,24 +84,41 @@ export default function EngineerReview() {
     try {
       setLoading(true);
       
-      const { data, error } = await supabase
+      // 1) Fetch expenses assigned to engineer without implicit join
+      const { data: expenses, error: expensesError } = await supabase
         .from("expenses")
-        .select(`
-          *,
-          profiles!inner(name, email)
-        `)
+        .select("*")
         .eq("assigned_engineer_id", user?.id)
         .in("status", ["under_review", "verified"])
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (expensesError) throw expensesError;
 
-      setExpenses(data.map(expense => ({
-        ...expense,
-        user_name: expense.profiles.name,
-        user_email: expense.profiles.email,
-        total_amount: Number(expense.total_amount)
-      })));
+      if (!expenses || expenses.length === 0) {
+        setExpenses([]);
+        return;
+      }
+
+      // 2) Fetch related profiles separately and merge client-side
+      const userIds = [...new Set(expenses.map(e => e.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, name, email")
+        .in("user_id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      const merged = expenses.map(expense => {
+        const profile = profiles?.find(p => p.user_id === expense.user_id);
+        return {
+          ...expense,
+          user_name: profile?.name || "Unknown User",
+          user_email: profile?.email || "unknown@example.com",
+          total_amount: Number(expense.total_amount)
+        } as any;
+      });
+
+      setExpenses(merged);
     } catch (error) {
       console.error("Error fetching assigned expenses:", error);
     } finally {
@@ -169,6 +186,11 @@ export default function EngineerReview() {
     } finally {
       setReviewLoading(false);
     }
+  };
+
+  const isActionDisabled = (exp?: Expense | null) => {
+    if (!exp) return true;
+    return ["approved", "paid", "rejected", "verified"].includes(exp.status);
   };
 
   const getStats = () => {
@@ -523,14 +545,14 @@ export default function EngineerReview() {
                             <Button 
                               variant="destructive"
                               onClick={() => updateExpenseStatus("rejected")}
-                              disabled={reviewLoading}
+                              disabled={reviewLoading || isActionDisabled(selectedExpense)}
                             >
                               <XCircle className="mr-2 h-4 w-4" />
                               Reject
                             </Button>
                             <Button 
                               onClick={() => updateExpenseStatus("verified")}
-                              disabled={reviewLoading}
+                              disabled={reviewLoading || isActionDisabled(selectedExpense)}
                             >
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Verify

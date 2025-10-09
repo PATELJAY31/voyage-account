@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, DollarSign, Clock, CheckCircle, XCircle, TrendingUp, Users, Receipt } from "lucide-react";
+import { Plus, DollarSign, Clock, CheckCircle, XCircle, TrendingUp, Users, Receipt, Wallet } from "lucide-react";
 import { formatINR } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
 
@@ -12,6 +12,7 @@ interface DashboardStats {
   pendingAmount: number;
   approvedAmount: number;
   rejectedCount: number;
+  currentBalance: number;
 }
 
 export default function Dashboard() {
@@ -21,6 +22,7 @@ export default function Dashboard() {
     pendingAmount: 0,
     approvedAmount: 0,
     rejectedCount: 0,
+    currentBalance: 0,
   });
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -33,22 +35,33 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch expenses
+      const { data: expenses, error: expensesError } = await supabase
         .from("expenses")
         .select("*")
         .eq("user_id", user?.id);
 
-      if (error) throw error;
+      if (expensesError) throw expensesError;
+
+      // Fetch user profile for balance
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("balance")
+        .eq("user_id", user?.id)
+        .single();
+
+      if (profileError) throw profileError;
 
       const stats: DashboardStats = {
-        totalExpenses: data.length,
-        pendingAmount: data
+        totalExpenses: expenses.length,
+        pendingAmount: expenses
           .filter((e) => ["submitted", "under_review", "verified"].includes(e.status))
           .reduce((sum, e) => sum + Number(e.total_amount), 0),
-        approvedAmount: data
+        approvedAmount: expenses
           .filter((e) => ["approved", "paid"].includes(e.status))
           .reduce((sum, e) => sum + Number(e.total_amount), 0),
-        rejectedCount: data.filter((e) => e.status === "rejected").length,
+        rejectedCount: expenses.filter((e) => e.status === "rejected").length,
+        currentBalance: profile?.balance ?? 0,
       };
 
       setStats(stats);
@@ -60,6 +73,13 @@ export default function Dashboard() {
   };
 
   const statCards = [
+    {
+      title: "Current Balance",
+      value: formatINR(stats.currentBalance),
+      icon: Wallet,
+      description: "Available balance",
+      highlight: true,
+    },
     {
       title: "Total Expenses",
       value: stats.totalExpenses,
@@ -86,6 +106,25 @@ export default function Dashboard() {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">
+              Welcome back! Here's an overview of your expenses.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-8">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="ml-2 text-gray-600">Loading dashboard...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 sm:space-y-6 lg:space-y-8">
       {/* Mobile-optimized Header */}
@@ -108,18 +147,39 @@ export default function Dashboard() {
       </div>
 
       {/* Mobile-optimized Stats Grid */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={card.title} 
+              className={`hover:shadow-md transition-shadow ${
+                card.highlight 
+                  ? 'border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50' 
+                  : ''
+              }`}
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4 sm:px-6 pt-4 sm:pt-6">
-                <CardTitle className="text-xs sm:text-sm font-medium truncate">{card.title}</CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <CardTitle className={`text-xs sm:text-sm font-medium truncate ${
+                  card.highlight ? 'text-green-700' : ''
+                }`}>
+                  {card.title}
+                </CardTitle>
+                <Icon className={`h-4 w-4 flex-shrink-0 ${
+                  card.highlight ? 'text-green-600' : 'text-muted-foreground'
+                }`} />
               </CardHeader>
               <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
-                <div className="text-xl sm:text-2xl font-bold">{card.value}</div>
-                <p className="text-xs text-muted-foreground mt-1">{card.description}</p>
+                <div className={`text-xl sm:text-2xl font-bold ${
+                  card.highlight ? 'text-green-800' : ''
+                }`}>
+                  {card.value}
+                </div>
+                <p className={`text-xs mt-1 ${
+                  card.highlight ? 'text-green-600' : 'text-muted-foreground'
+                }`}>
+                  {card.description}
+                </p>
               </CardContent>
             </Card>
           );
