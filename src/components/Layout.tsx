@@ -36,7 +36,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    if (user && userRole === 'employee') {
+    if (user && (userRole === 'employee' || userRole === 'cashier')) {
       fetchUserBalance();
     }
   }, [user, userRole]);
@@ -76,11 +76,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
               
               {/* User Profile Section */}
               <div className="flex items-center gap-3">
-                {/* Balance indicator for employees */}
-                {userRole === 'employee' && userBalance !== null && (
-                  <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-lg">
-                    <Wallet className="h-4 w-4 text-green-600" />
-                    <span className="text-sm font-medium text-green-700">
+                {/* Balance indicator for employees and cashiers */}
+                {(userRole === 'employee' || userRole === 'cashier') && userBalance !== null && (
+                  <div className={`hidden md:flex items-center gap-2 px-3 py-1 border rounded-lg ${
+                    userRole === 'cashier' 
+                      ? 'bg-purple-50 border-purple-200' 
+                      : 'bg-green-50 border-green-200'
+                  }`}>
+                    <Wallet className={`h-4 w-4 ${
+                      userRole === 'cashier' ? 'text-purple-600' : 'text-green-600'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      userRole === 'cashier' ? 'text-purple-700' : 'text-green-700'
+                    }`}>
                       {formatINR(userBalance)}
                     </span>
                   </div>
