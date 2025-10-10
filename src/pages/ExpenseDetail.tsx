@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -77,6 +78,8 @@ export default function ExpenseDetail() {
   const [expense, setExpense] = useState<Expense | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -495,7 +498,10 @@ export default function ExpenseDetail() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => window.open(attachment.file_url, '_blank')}
+                        onClick={() => {
+                          setImagePreviewUrl(attachment.file_url);
+                          setImagePreviewOpen(true);
+                        }}
                       >
                         <Eye className="h-4 w-4 mr-2" />
                         View
@@ -506,6 +512,15 @@ export default function ExpenseDetail() {
               </CardContent>
             </Card>
           )}
+
+          {/* Image Preview Dialog */}
+          <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+            <DialogContent className="max-w-3xl">
+              {imagePreviewUrl && (
+                <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+              )}
+            </DialogContent>
+          </Dialog>
 
           {/* Admin Comments */}
           {expense.admin_comment && (

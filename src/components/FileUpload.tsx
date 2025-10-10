@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Upload, X, FileText, Image, Download } from "lucide-react";
@@ -37,6 +38,8 @@ export function FileUpload({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -217,6 +220,7 @@ export function FileUpload({
   };
 
   return (
+    <>
     <Card className={cn("w-full", className)}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -301,7 +305,10 @@ export function FileUpload({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => window.open(attachment.file_url, '_blank')}
+                      onClick={() => {
+                        setImagePreviewUrl(attachment.file_url);
+                        setImagePreviewOpen(true);
+                      }}
                     >
                       <Download className="h-4 w-4" />
                     </Button>
@@ -320,6 +327,16 @@ export function FileUpload({
         )}
       </CardContent>
     </Card>
+
+    {/* Image Preview Dialog */}
+    <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+      <DialogContent className="max-w-3xl">
+        {imagePreviewUrl && (
+          <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

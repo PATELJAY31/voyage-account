@@ -261,15 +261,19 @@ export class ExpenseService {
 
     if (profileError) throw profileError;
 
-    // If a reporting engineer is set, auto-assign and move to under_review
-    // Otherwise, keep as submitted for admin to assign
+    // Require a reporting engineer so the expense always routes to someone
+    if (!profile?.reporting_engineer_id) {
+      throw new Error(
+        "No reporting engineer is assigned to your profile. Please contact admin to set your reporting engineer before submitting the expense."
+      );
+    }
+
+    // Auto-assign to reporting engineer and move to under_review
     const updatePayload: any = {
-      status: profile?.reporting_engineer_id ? "under_review" : "submitted",
+      status: "under_review",
+      assigned_engineer_id: profile.reporting_engineer_id,
       updated_at: new Date().toISOString(),
     };
-    if (profile?.reporting_engineer_id) {
-      updatePayload.assigned_engineer_id = profile.reporting_engineer_id;
-    }
 
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
@@ -281,9 +285,7 @@ export class ExpenseService {
     if (updateError) throw updateError;
 
     // Log the action
-    const logMsg = profile?.reporting_engineer_id
-      ? `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`
-      : "Expense submitted for review";
+    const logMsg = `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`;
     await this.logAction(expenseId, userId, "expense_submitted", logMsg);
 
     return updatedExpense;

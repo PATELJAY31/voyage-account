@@ -80,6 +80,8 @@ export default function AdminPanel() {
   const { toast } = useToast();
   
   const [users, setUsers] = useState<User[]>([]);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
@@ -846,7 +848,16 @@ export default function AdminPanel() {
                                                 <p className="text-xs text-muted-foreground">{a.content_type} • {format(new Date(a.created_at), "MMM d, yyyy")}</p>
                                               </div>
                                             </div>
-                                            <Button variant="outline" size="sm" onClick={() => window.open(a.file_url, "_blank")}>View</Button>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => {
+                                                setImagePreviewUrl(a.file_url);
+                                                setImagePreviewOpen(true);
+                                              }}
+                                            >
+                                              View
+                                            </Button>
                                           </div>
                                         ))}
                                       </div>
@@ -868,6 +879,14 @@ export default function AdminPanel() {
                               </DialogFooter>
                             </DialogContent>
                           </Dialog>
+                        {/* Image Preview Dialog */}
+                        <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+                          <DialogContent className="max-w-3xl">
+                            {imagePreviewUrl && (
+                              <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+                            )}
+                          </DialogContent>
+                        </Dialog>
                         </TableCell>
                       </TableRow>
                     ))}

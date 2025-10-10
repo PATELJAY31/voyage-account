@@ -46,6 +46,8 @@ interface Expense {
   admin_comment?: string;
 }
 
+// Local state for image preview
+
 interface LineItem {
   id: string;
   date: string;
@@ -73,6 +75,8 @@ export default function EngineerReview() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [engineerComment, setEngineerComment] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (userRole === "engineer") {
@@ -487,7 +491,10 @@ export default function EngineerReview() {
                                           <Button
                                             variant="outline"
                                             size="sm"
-                                            onClick={() => window.open(attachment.file_url, '_blank')}
+                                            onClick={() => {
+                                              setImagePreviewUrl(attachment.file_url);
+                                              setImagePreviewOpen(true);
+                                            }}
                                           >
                                             View
                                           </Button>
@@ -558,6 +565,14 @@ export default function EngineerReview() {
                               Verify
                             </Button>
                           </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                      {/* Image Preview Dialog */}
+                      <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+                        <DialogContent className="max-w-3xl">
+                          {imagePreviewUrl && (
+                            <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+                          )}
                         </DialogContent>
                       </Dialog>
                     </TableCell>
