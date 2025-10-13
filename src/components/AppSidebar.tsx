@@ -48,6 +48,7 @@ export function AppSidebar() {
     { title: "All Expenses", url: "/admin/expenses", icon: Receipt },
     { title: "Balances", url: "/balances", icon: FileText },
     { title: "Manage Users", url: "/admin/users", icon: Users },
+    { title: "Reports", url: "/admin/reports", icon: FileText },
     { title: "Templates", url: "/templates", icon: FileType },
     { title: "Analytics", url: "/analytics", icon: BarChart3 },
     { title: "Notifications", url: "/notifications", icon: Bell },

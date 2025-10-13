@@ -17,12 +17,8 @@ export interface CreateExpenseData {
   trip_start: string;
   trip_end: string;
   purpose?: string;
-  line_items: Array<{
-    date: string;
-    category: string; // accept any category defined in DB enum v2
-    amount: number;
-    description: string;
-  }>;
+  amount: number;
+  category: string;
 }
 
 export interface UpdateExpenseData {
@@ -34,13 +30,8 @@ export interface UpdateExpenseData {
   status?: "draft" | "submitted" | "under_review" | "verified" | "approved" | "rejected" | "paid";
   admin_comment?: string;
   assigned_engineer_id?: string;
-  line_items?: Array<{
-    id?: string;
-    date: string;
-    category: string; // accept any category defined in DB enum v2
-    amount: number;
-    description: string;
-  }>;
+  amount?: number;
+  category?: string;
 }
 
 export class ExpenseService {
@@ -52,20 +43,8 @@ export class ExpenseService {
     userId: string,
     data: CreateExpenseData
   ): Promise<ExpenseWithLineItems> {
-    // Validate line items
-    if (!data.line_items || data.line_items.length === 0) {
-      throw new Error("At least one line item is required");
-    }
-
-    // Validate amounts
-    for (const item of data.line_items) {
-      if (item.amount <= 0) {
-        throw new Error("All line item amounts must be greater than 0");
-      }
-    }
-
-    // Calculate total amount
-    const totalAmount = data.line_items.reduce((sum, item) => sum + item.amount, 0);
+    // No line items in creation flow; use provided amount as total
+    const totalAmount = Number(data.amount || 0);
 
     // Start transaction
     const { data: expense, error: expenseError } = await supabase
@@ -77,6 +56,7 @@ export class ExpenseService {
         trip_start: data.trip_start,
         trip_end: data.trip_end,
         purpose: data.purpose,
+        category: data.category,
         total_amount: totalAmount,
         status: "draft",
       })
@@ -88,24 +68,8 @@ export class ExpenseService {
       throw new Error(`Failed to create expense: ${expenseError.message || 'Unknown error'}`);
     }
 
-    // Insert line items
-    const lineItemsData: LineItemInsert[] = data.line_items.map(item => ({
-      expense_id: expense.id,
-      date: item.date,
-      category: item.category,
-      amount: item.amount,
-      description: item.description,
-    }));
-
-    const { data: lineItems, error: lineItemsError } = await supabase
-      .from("expense_line_items")
-      .insert(lineItemsData)
-      .select();
-
-    if (lineItemsError) {
-      console.error("Line items creation error:", lineItemsError);
-      throw new Error(`Failed to create line items: ${lineItemsError.message || 'Unknown error'}`);
-    }
+    // No line items to insert
+    const lineItems: LineItem[] = [];
 
     // Log the action
     await this.logAction(expense.id, userId, "expense_created", "Expense created");
@@ -145,48 +109,12 @@ export class ExpenseService {
       throw new Error("Only draft expenses can be edited");
     }
 
-    let totalAmount = currentExpense.total_amount;
-
-    // Update line items if provided
-    if (data.line_items) {
-      // Validate line items
-      for (const item of data.line_items) {
-        if (item.amount <= 0) {
-          throw new Error("All line item amounts must be greater than 0");
-        }
-      }
-
-      // Delete existing line items
-      const { error: deleteError } = await supabase
-        .from("expense_line_items")
-        .delete()
-        .eq("expense_id", expenseId);
-
-      if (deleteError) throw deleteError;
-
-      // Insert new line items
-      const lineItemsData: LineItemInsert[] = data.line_items.map(item => ({
-        expense_id: expenseId,
-        date: item.date,
-        category: item.category,
-        amount: item.amount,
-        description: item.description,
-      }));
-
-      const { error: insertError } = await supabase
-        .from("expense_line_items")
-        .insert(lineItemsData);
-
-      if (insertError) throw insertError;
-
-      // Recalculate total amount
-      totalAmount = data.line_items.reduce((sum, item) => sum + item.amount, 0);
-    }
+    const totalAmount = currentExpense.total_amount;
 
     // Update expense
     const updateData: ExpenseUpdate = {
       ...data,
-      total_amount: totalAmount,
+      total_amount: typeof data.amount === 'number' ? data.amount : totalAmount,
       updated_at: new Date().toISOString(),
     };
 
@@ -199,13 +127,8 @@ export class ExpenseService {
 
     if (updateError) throw updateError;
 
-    // Get updated line items
-    const { data: lineItems, error: lineItemsError } = await supabase
-      .from("expense_line_items")
-      .select("*")
-      .eq("expense_id", expenseId);
-
-    if (lineItemsError) throw lineItemsError;
+    // No line item updates; fetch none
+    const lineItems: LineItem[] = [];
 
     // Log the action
     const action = data.status ? `status_changed_to_${data.status}` : "expense_updated";
@@ -240,24 +163,16 @@ export class ExpenseService {
       throw new Error("Only draft expenses can be submitted");
     }
 
-    // Check if expense has line items
-    const { data: lineItems, error: lineItemsError } = await supabase
-      .from("expense_line_items")
-      .select("*")
-      .eq("expense_id", expenseId);
-
-    if (lineItemsError) throw lineItemsError;
-
-    if (!lineItems || lineItems.length === 0) {
-      throw new Error("Cannot submit expense without line items");
-    }
+    // Line items are not required anymore for submission
 
     // Find employee's reporting engineer
-    const { data: profile, error: profileError } = await supabase
+    const { data: profileRaw, error: profileError } = await supabase
       .from("profiles")
       .select("reporting_engineer_id")
       .eq("user_id", userId)
       .single();
+
+    const profile = profileRaw as unknown as { reporting_engineer_id: string | null } | null;
 
     if (profileError) throw profileError;
 
@@ -271,7 +186,7 @@ export class ExpenseService {
     // Auto-assign to reporting engineer and move to under_review
     const updatePayload: any = {
       status: "under_review",
-      assigned_engineer_id: profile.reporting_engineer_id,
+      assigned_engineer_id: profile?.reporting_engineer_id,
       updated_at: new Date().toISOString(),
     };
 
@@ -285,7 +200,7 @@ export class ExpenseService {
     if (updateError) throw updateError;
 
     // Log the action
-    const logMsg = `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`;
+    const logMsg = `Expense submitted and auto-assigned to engineer ${profile?.reporting_engineer_id}`;
     await this.logAction(expenseId, userId, "expense_submitted", logMsg);
 
     return updatedExpense;

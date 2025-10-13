@@ -9,16 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Plus, Trash2, Save, Send } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { CalendarIcon, Save, Send } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { FileUpload } from "@/components/FileUpload";
 import { ExpenseService, CreateExpenseData, UpdateExpenseData } from "@/services/ExpenseService";
 import { z } from "zod";
-import { formatINR } from "@/lib/format";
+// line items removed
 
 const expenseSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -26,22 +27,11 @@ const expenseSchema = z.object({
   trip_start: z.date(),
   trip_end: z.date(),
   purpose: z.string().optional(),
-});
-
-const lineItemSchema = z.object({
-  date: z.date(),
+  amount: z.number().positive("Amount must be greater than 0"),
   category: z.string().min(1, "Category is required"),
-  amount: z.number().positive("Amount must be positive"),
-  description: z.string().min(1, "Description is required"),
 });
 
-interface LineItem {
-  id?: string;
-  date: Date;
-  category: string;
-  amount: number;
-  description: string;
-}
+// Line items schema removed
 
 export default function ExpenseForm() {
   const { user } = useAuth();
@@ -56,14 +46,45 @@ export default function ExpenseForm() {
     trip_start: new Date(),
     trip_end: new Date(),
     purpose: "",
+    amount: 0,
+    category: "other",
   });
-  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  // Line items state removed
   const [isEditing, setIsEditing] = useState(false);
   const [currentExpenseId, setCurrentExpenseId] = useState<string | null>(null);
   const [requiredFiles, setRequiredFiles] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [addCatOpen, setAddCatOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   useEffect(() => {
+    const init = async () => {
+      try {
+        setLoadingCategories(true);
+        const { data: catData } = await supabase
+          .from('expense_categories')
+          .select('name, active')
+          .eq('active', true)
+          .order('name');
+        if (catData) setCategories(catData.map((c: any) => c.name));
+
+        if (user?.id) {
+          const { data: role } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .eq('role', 'admin')
+            .maybeSingle();
+          setIsAdmin(!!role);
+        }
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+    init();
     if (id && id !== "new") {
       fetchExpense();
       setIsEditing(true);
@@ -79,14 +100,7 @@ export default function ExpenseForm() {
             purpose: template.purpose || ""
           }));
           
-          if (template.commonItems) {
-            setLineItems(template.commonItems.map((item: any) => ({
-              date: new Date(),
-              category: item.category,
-              amount: item.estimatedAmount,
-              description: item.description
-            })));
-          }
+          // commonItems removed from form
           
           // Clear template data after use
           sessionStorage.removeItem('expenseTemplate');
@@ -113,27 +127,13 @@ export default function ExpenseForm() {
         trip_start: new Date(expenseData.trip_start),
         trip_end: new Date(expenseData.trip_end),
         purpose: expenseData.purpose || "",
+        amount: Number(expenseData.total_amount || 0),
+        category: expenseData.category || "other",
       });
 
       setCurrentExpenseId(expenseData.id);
 
-      const { data: lineItemsData, error: lineItemsError } = await supabase
-        .from("expense_line_items")
-        .select("*")
-        .eq("expense_id", id)
-        .order("date");
-
-      if (lineItemsError) throw lineItemsError;
-
-      setLineItems(
-        lineItemsData.map((item) => ({
-          id: item.id,
-          date: new Date(item.date),
-          category: item.category,
-          amount: Number(item.amount),
-          description: item.description,
-        }))
-      );
+      // no line items fetch
     } catch (error) {
       console.error("Error fetching expense:", error);
       toast({
@@ -144,17 +144,56 @@ export default function ExpenseForm() {
     }
   };
 
-  const addLineItem = () => {
-    setLineItems([
-      ...lineItems,
-      {
-        date: new Date(),
-        category: "travel",
-        amount: 0,
-        description: "",
-      },
-    ]);
+  const handleAddCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    try {
+      // Try inserting with 'active' first
+      let { error } = await supabase
+        .from('expense_categories')
+        .insert({ name, active: true, created_by: user?.id || null });
+      if (error && (error as any).code === '42703') {
+        // Fallback to 'is_active'
+        const res2 = await supabase
+          .from('expense_categories')
+          .insert({ name, is_active: true, created_by: user?.id || null });
+        error = res2.error as any;
+      }
+      if (error) throw error;
+
+      // Refresh categories list
+      setCategories((prev) => Array.from(new Set([...
+        prev,
+        name
+      ])));
+      setNewCategoryName("");
+      setAddCatOpen(false);
+      toast({ title: 'Category added', description: `${name} has been added.` });
+    } catch (e: any) {
+      console.error('Failed to add category:', e);
+      toast({ variant: 'destructive', title: 'Error', description: e?.message || 'Failed to add category' });
+    }
   };
+
+  const AddCategoryDialog = (
+    <Dialog open={addCatOpen} onOpenChange={setAddCatOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Category</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Label htmlFor="newCat">Category Name</Label>
+          <Input id="newCat" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="e.g., Travel" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAddCatOpen(false)}>Cancel</Button>
+          <Button onClick={handleAddCategory} disabled={!newCategoryName.trim()}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  // addLineItem removed
 
   const moveTempFilesToExpense = async (expenseId: string) => {
     try {
@@ -218,19 +257,7 @@ export default function ExpenseForm() {
     }
   };
 
-  const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
-    const updated = [...lineItems];
-    updated[index] = { ...updated[index], [field]: value };
-    setLineItems(updated);
-  };
-
-  const removeLineItem = (index: number) => {
-    setLineItems(lineItems.filter((_, i) => i !== index));
-  };
-
-  const calculateTotal = () => {
-    return lineItems.reduce((sum, item) => sum + item.amount, 0);
-  };
+  // line item handlers removed
 
   const saveExpense = async (status: "draft" | "submitted" = "draft") => {
     if (!user) return;
@@ -245,19 +272,7 @@ export default function ExpenseForm() {
         trip_end: expense.trip_end,
       });
 
-      // Validate line items
-      const validatedLineItems = lineItems.map(item => 
-        lineItemSchema.parse({
-          ...item,
-          date: item.date,
-        })
-      );
-
-        if (validatedLineItems.length === 0) {
-          throw new Error("At least one line item is required");
-        }
-
-        // Check if bill photos are uploaded for submission
+      // Check if bill photos are uploaded for submission
         if (status === "submitted" && attachments.length === 0) {
           throw new Error("Bill photos are required for expense submission. Please upload at least one photo of your receipt or bill.");
         }
@@ -269,12 +284,8 @@ export default function ExpenseForm() {
         trip_start: validatedExpense.trip_start.toISOString().split('T')[0],
         trip_end: validatedExpense.trip_end.toISOString().split('T')[0],
         purpose: validatedExpense.purpose,
-        line_items: validatedLineItems.map(item => ({
-          date: item.date.toISOString().split('T')[0],
-          category: item.category,
-          amount: item.amount,
-          description: item.description,
-        })),
+        amount: validatedExpense.amount,
+        category: validatedExpense.category,
       };
 
       if (isEditing && id) {
@@ -373,7 +384,7 @@ export default function ExpenseForm() {
           </Button>
           <Button
             onClick={() => saveExpense("submitted")}
-            disabled={loading || lineItems.length === 0}
+            disabled={loading}
             className="w-full sm:w-auto"
           >
             <Send className="mr-2 h-4 w-4" />
@@ -475,135 +486,50 @@ export default function ExpenseForm() {
                 rows={3}
               />
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Line Items */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-              <div>
-                <CardTitle className="text-lg">Expense Items</CardTitle>
-                <CardDescription className="text-sm">Add individual expense items</CardDescription>
-              </div>
-              <Button onClick={addLineItem} size="sm" className="w-full sm:w-auto">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Item
-              </Button>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount *</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={expense.amount || ""}
+                onChange={(e) => setExpense({ ...expense, amount: parseFloat(e.target.value) || 0 })}
+                placeholder="0.00"
+              />
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {lineItems.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                No expense items yet. Click "Add Item" to get started.
-              </p>
-            ) : (
-              <>
-                {lineItems.map((item, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-medium">Item {index + 1}</h4>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeLineItem(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label>Date</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !item.date && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {item.date ? format(item.date, "PPP") : "Pick a date"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={item.date}
-                              onSelect={(date) => date && updateLineItem(index, "date", date)}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Category</Label>
-                        <Select
-                          value={item.category}
-                          onValueChange={(value) => updateLineItem(index, "category", value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="travel">Travel</SelectItem>
-                            <SelectItem value="lodging">Lodging</SelectItem>
-                            <SelectItem value="food">Food</SelectItem>
-                            <SelectItem value="transport">Transport</SelectItem>
-                            <SelectItem value="office_supplies">Office Supplies</SelectItem>
-                            <SelectItem value="software">Software</SelectItem>
-                            <SelectItem value="utilities">Utilities</SelectItem>
-                            <SelectItem value="marketing">Marketing</SelectItem>
-                            <SelectItem value="training">Training</SelectItem>
-                            <SelectItem value="health_wellness">Health & Wellness</SelectItem>
-                            <SelectItem value="equipment">Equipment</SelectItem>
-                            <SelectItem value="mileage">Mileage</SelectItem>
-                            <SelectItem value="internet_phone">Internet & Phone</SelectItem>
-                            <SelectItem value="entertainment">Entertainment</SelectItem>
-                            <SelectItem value="professional_services">Professional Services</SelectItem>
-                            <SelectItem value="rent">Rent</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Description *</Label>
-                      <Input
-                        value={item.description}
-                        onChange={(e) => updateLineItem(index, "description", e.target.value)}
-                        placeholder="Describe this expense..."
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Amount *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.amount || ""}
-                        onChange={(e) => updateLineItem(index, "amount", parseFloat(e.target.value) || 0)}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                ))}
-
-                <div className="border-t pt-4">
-                  <div className="flex justify-between items-center text-lg font-semibold">
-                    <span>Total Amount:</span>
-                    <span>{formatINR(calculateTotal())}</span>
-                  </div>
-                </div>
-              </>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="category">Category *</Label>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={expense.category}
+                  onValueChange={(val) => setExpense({ ...expense, category: val })}
+                >
+                  <SelectTrigger id="category" className="w-full">
+                    <SelectValue placeholder={loadingCategories ? 'Loading...' : 'Select a category'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isAdmin && (
+                  <Button type="button" variant="outline" onClick={() => setAddCatOpen(true)}>Add</Button>
+                )}
+              </div>
+              {!categories.length && (
+                <p className="text-xs text-muted-foreground">No categories yet. {isAdmin ? 'Add one to get started.' : 'Please contact admin.'}</p>
+              )}
+            </div>
+          </div>
           </CardContent>
         </Card>
+
+        {/* Line Items removed from the creation form */}
       </div>
 
       {/* File Upload Section - Required for Submission */}
@@ -651,6 +577,8 @@ export default function ExpenseForm() {
           </CardContent>
         </Card>
       </div>
+
+      {AddCategoryDialog}
     </div>
   );
 }

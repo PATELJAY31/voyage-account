@@ -5,11 +5,17 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatINR } from "@/lib/format";
-import { Wallet } from "lucide-react";
+import { Wallet, Pencil } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { userProfile, userRole, user } = useAuth();
+  const { userProfile, userRole, user, refreshUserProfile } = useAuth();
   const [userBalance, setUserBalance] = useState<number | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
   
   const getInitials = (name: string) => {
     return name
@@ -102,6 +108,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     {userRole ? getRoleDisplayName(userRole) : ''}
                   </p>
                 </div>
+                <button
+                  aria-label="Edit name"
+                  className="p-2 rounded hover:bg-gray-100 hidden sm:inline-flex"
+                  onClick={() => { setNameDraft(userProfile?.name || ""); setEditOpen(true); }}
+                >
+                  <Pencil className="h-4 w-4 text-gray-600" />
+                </button>
                 <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm">
                     {userProfile?.name ? getInitials(userProfile.name) : 'U'}
@@ -117,6 +130,40 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {children}
             </div>
           </div>
+
+          {/* Edit Name Drawer */}
+          <Sheet open={editOpen} onOpenChange={setEditOpen}>
+            <SheetContent side="right" className="w-full sm:max-w-md">
+              <SheetHeader>
+                <SheetTitle>Edit Profile</SheetTitle>
+                <SheetDescription>Update your display name</SheetDescription>
+              </SheetHeader>
+              <div className="py-4 space-y-3">
+                <label className="text-sm font-medium text-gray-700">Full Name</label>
+                <Input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Your name" />
+                <div className="pt-2 flex gap-2">
+                  <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                  <Button disabled={savingName || !nameDraft.trim()} onClick={async () => {
+                    if (!user?.id) return;
+                    try {
+                      setSavingName(true);
+                      const { error } = await supabase
+                        .from("profiles")
+                        .update({ name: nameDraft.trim() })
+                        .eq("user_id", user.id);
+                      if (error) throw error;
+                      await refreshUserProfile(user.id);
+                      setEditOpen(false);
+                    } catch (e) {
+                      console.error("Failed to update name", e);
+                    } finally {
+                      setSavingName(false);
+                    }
+                  }}>{savingName ? 'Saving...' : 'Save'}</Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
         </main>
       </div>
     </SidebarProvider>
