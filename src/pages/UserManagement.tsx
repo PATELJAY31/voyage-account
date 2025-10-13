@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserPlus, Mail, User, Shield, Settings, Sparkles, CheckCircle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 const createUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -32,7 +35,15 @@ export default function UserManagement() {
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [engineers, setEngineers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [users, setUsers] = useState<{ user_id: string; name: string; email: string; balance: number; role: string }[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<{ user_id: string; name: string; email: string; balance: number; role: string } | null>(null);
+  const [expensesLoading, setExpensesLoading] = useState(false);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [logsByExpense, setLogsByExpense] = useState<Record<string, any[]>>({});
+  const [deductions, setDeductions] = useState<any[]>([]);
   const [formData, setFormData] = useState<CreateUserForm>({
     name: "",
     email: "",
@@ -75,7 +86,99 @@ export default function UserManagement() {
     };
 
     loadEngineers();
+    // Load users for admin list
+    const loadUsers = async () => {
+      try {
+        setListLoading(true);
+        // fetch profiles
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("user_id, name, email, balance");
+        if (profilesError) throw profilesError;
+
+        const ids = (profiles || []).map(p => p.user_id);
+        let rolesById: Record<string, string> = {};
+        if (ids.length > 0) {
+          const { data: rolesRows, error: rolesErr } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .in("user_id", ids);
+          if (rolesErr) throw rolesErr;
+          (rolesRows || []).forEach(r => { rolesById[r.user_id] = r.role; });
+        }
+
+        const combined = (profiles || []).map(p => ({
+          user_id: p.user_id,
+          name: (p as any).name || "",
+          email: (p as any).email || "",
+          balance: Number((p as any).balance ?? 0),
+          role: rolesById[p.user_id] || "employee",
+        }));
+        setUsers(combined);
+      } catch (e) {
+        console.error("Error loading users list:", e);
+      } finally {
+        setListLoading(false);
+      }
+    };
+    loadUsers();
   }, []);
+
+  const openUserDrawer = async (u: { user_id: string; name: string; email: string; balance: number; role: string }) => {
+    setSelectedUser(u);
+    setDrawerOpen(true);
+    setExpensesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("expenses")
+        .select("id, title, total_amount, status, created_at, updated_at")
+        .eq("user_id", u.user_id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const list = data || [];
+      setExpenses(list);
+
+      // Fetch audit logs for these expenses to build history and deductions
+      const expenseIds = list.map((e: any) => e.id);
+      if (expenseIds.length > 0) {
+        const { data: logs, error: logsErr } = await supabase
+          .from("audit_logs")
+          .select("expense_id, user_id, action, comment, created_at")
+          .in("expense_id", expenseIds)
+          .order("created_at", { ascending: false });
+        if (logsErr) throw logsErr;
+
+        const grouped: Record<string, any[]> = {};
+        (logs || []).forEach((log: any) => {
+          if (!grouped[log.expense_id]) grouped[log.expense_id] = [];
+          grouped[log.expense_id].push(log);
+        });
+        setLogsByExpense(grouped);
+
+        // Deductions are the admin approvals for this user's expenses
+        const approvals = (logs || []).filter(l => l.action === "expense_approved");
+        // Map to include the expense info and amount (use total_amount)
+        const deduced = approvals.map((l: any) => {
+          const exp = list.find((e: any) => e.id === l.expense_id);
+          return {
+            expense_id: l.expense_id,
+            title: exp?.title || "Untitled",
+            amount: Number(exp?.total_amount ?? 0),
+            at: l.created_at,
+            comment: l.comment || "",
+          };
+        });
+        setDeductions(deduced);
+      } else {
+        setLogsByExpense({});
+        setDeductions([]);
+      }
+    } catch (e) {
+      console.error("Failed to load expenses for user:", e);
+    } finally {
+      setExpensesLoading(false);
+    }
+  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,6 +342,56 @@ export default function UserManagement() {
           Create and manage user accounts for your organization with role-based access control
         </p>
       </div>
+
+      {/* Users List Card */}
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="p-6">
+            <CardTitle className="text-xl font-bold">All Users</CardTitle>
+            <CardDescription>Click a user to view full details and expense history</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold text-slate-700">Name</th>
+                    <th className="px-4 py-3 font-semibold text-slate-700">Email</th>
+                    <th className="px-4 py-3 font-semibold text-slate-700">Role</th>
+                    <th className="px-4 py-3 font-semibold text-slate-700">Balance</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listLoading ? (
+                    <tr>
+                      <td className="px-4 py-4" colSpan={5}>Loading users...</td>
+                    </tr>
+                  ) : users.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-4" colSpan={5}>No users found</td>
+                    </tr>
+                  ) : (
+                    users.map(u => (
+                      <tr key={u.user_id} className="border-t hover:bg-slate-50">
+                        <td className="px-4 py-3">{u.name || "-"}</td>
+                        <td className="px-4 py-3">{u.email || "-"}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium">
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">₹{Number(u.balance ?? 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Button variant="outline" size="sm" onClick={() => openUserDrawer(u)}>View</Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
 
       {/* Create User Card */}
         <Card className="shadow-2xl border-0 bg-white/80 backdrop-blur-sm overflow-hidden">
@@ -563,6 +716,94 @@ export default function UserManagement() {
             </div>
           </CardContent>
         </Card>
+      {/* Details Drawer */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>User Details</SheetTitle>
+            <SheetDescription>Profile, balance, and complete expense history</SheetDescription>
+          </SheetHeader>
+          {selectedUser && (
+            <div className="space-y-6 py-4">
+              <div>
+                <div className="text-lg font-semibold">{selectedUser.name}</div>
+                <div className="text-slate-600 text-sm">{selectedUser.email}</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium">
+                  {selectedUser.role}
+                </span>
+                <Separator orientation="vertical" className="h-5" />
+                <div className="text-sm">Balance: <span className="font-semibold">₹{Number(selectedUser.balance ?? 0).toFixed(2)}</span></div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <div className="text-base font-semibold mb-3">Expenses</div>
+                {expensesLoading ? (
+                  <div className="text-sm text-slate-600">Loading expenses...</div>
+                ) : expenses.length === 0 ? (
+                  <div className="text-sm text-slate-600">No expenses found</div>
+                ) : (
+                  <div className="space-y-3">
+                    {expenses.map((e) => (
+                      <div key={e.id} className="p-3 rounded border bg-white">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium">{e.title || "Untitled"}</div>
+                          <div className="text-sm">₹{Number(e.total_amount ?? 0).toFixed(2)}</div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-slate-600 mt-1">
+                          <div>Category: {e.category || "-"}</div>
+                          <div>Status: {e.status}</div>
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Created: {new Date(e.created_at).toLocaleString()} {e.updated_at ? `• Updated: ${new Date(e.updated_at).toLocaleString()}` : ""}
+                        </div>
+
+                        {/* History timeline */}
+                        {logsByExpense[e.id] && logsByExpense[e.id].length > 0 && (
+                          <div className="mt-3 border-t pt-2 space-y-1">
+                            {logsByExpense[e.id].map((log) => (
+                              <div key={log.created_at + log.action} className="text-xs flex items-center justify-between">
+                                <div className="text-slate-600">{log.action.replaceAll("_", " ")}</div>
+                                <div className="text-slate-500">{new Date(log.created_at).toLocaleString()}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Balance deductions (from approvals) */}
+              <div>
+                <div className="text-base font-semibold mb-3">Balance Deductions</div>
+                {deductions.length === 0 ? (
+                  <div className="text-sm text-slate-600">No deductions recorded</div>
+                ) : (
+                  <div className="space-y-2">
+                    {deductions.map((d) => (
+                      <div key={d.expense_id + d.at} className="p-3 rounded border bg-white text-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium">{d.title}</div>
+                          <div className="font-semibold">-₹{Number(d.amount ?? 0).toFixed(2)}</div>
+                        </div>
+                        <div className="text-xs text-slate-500">{new Date(d.at).toLocaleString()}</div>
+                        {d.comment ? (
+                          <div className="text-xs text-slate-600 mt-1">{d.comment}</div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
