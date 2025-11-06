@@ -24,8 +24,7 @@ import { z } from "zod";
 const expenseSchema = z.object({
   title: z.string().min(1, "Title is required"),
   destination: z.string().min(1, "Destination is required"),
-  trip_start: z.date(),
-  trip_end: z.date(),
+  expense_date: z.date(),
   purpose: z.string().optional(),
   amount: z.number().positive("Amount must be greater than 0"),
   category: z.string().min(1, "Category is required"),
@@ -43,8 +42,7 @@ export default function ExpenseForm() {
   const [expense, setExpense] = useState({
     title: "",
     destination: "",
-    trip_start: new Date(),
-    trip_end: new Date(),
+    expense_date: new Date(),
     purpose: "",
     amount: 0,
     category: "other",
@@ -124,8 +122,7 @@ export default function ExpenseForm() {
       setExpense({
         title: expenseData.title,
         destination: expenseData.destination,
-        trip_start: new Date(expenseData.trip_start),
-        trip_end: new Date(expenseData.trip_end),
+        expense_date: new Date(expenseData.trip_start),
         purpose: expenseData.purpose || "",
         amount: Number(expenseData.total_amount || 0),
         category: expenseData.category || "other",
@@ -259,7 +256,7 @@ export default function ExpenseForm() {
 
   // line item handlers removed
 
-  const saveExpense = async (status: "draft" | "submitted" = "draft") => {
+  const saveExpense = async () => {
     if (!user) return;
 
     try {
@@ -268,21 +265,22 @@ export default function ExpenseForm() {
       // Validate expense data
       const validatedExpense = expenseSchema.parse({
         ...expense,
-        trip_start: expense.trip_start,
-        trip_end: expense.trip_end,
+        expense_date: expense.expense_date,
       });
 
       // Check if bill photos are uploaded for submission
-        if (status === "submitted" && attachments.length === 0) {
-          throw new Error("Bill photos are required for expense submission. Please upload at least one photo of your receipt or bill.");
-        }
+      if (attachments.length === 0) {
+        throw new Error("Bill photos are required for expense submission. Please upload at least one photo of your receipt or bill.");
+      }
 
       // Prepare data for ExpenseService
+      // Use expense_date for both trip_start and trip_end since DB requires both
+      const expenseDateStr = validatedExpense.expense_date.toISOString().split('T')[0];
       const expenseData: CreateExpenseData | UpdateExpenseData = {
         title: validatedExpense.title,
         destination: validatedExpense.destination,
-        trip_start: validatedExpense.trip_start.toISOString().split('T')[0],
-        trip_end: validatedExpense.trip_end.toISOString().split('T')[0],
+        trip_start: expenseDateStr,
+        trip_end: expenseDateStr,
         purpose: validatedExpense.purpose,
         amount: validatedExpense.amount,
         category: validatedExpense.category,
@@ -290,10 +288,9 @@ export default function ExpenseForm() {
 
       if (isEditing && id) {
         // Update existing expense
-        await ExpenseService.updateExpense(id, user.id, {
-          ...expenseData,
-          status: status,
-        });
+        await ExpenseService.updateExpense(id, user.id, expenseData);
+        // Submit the expense (this will handle status change to submitted)
+        await ExpenseService.submitExpense(id, user.id);
       } else {
         // Create new expense
         const newExpense = await ExpenseService.createExpense(user.id, expenseData as CreateExpenseData);
@@ -302,15 +299,13 @@ export default function ExpenseForm() {
         // Move temp files to the new expense folder
         await moveTempFilesToExpense(newExpense.id);
         
-        // If submitting, update status
-        if (status === "submitted") {
-          await ExpenseService.submitExpense(newExpense.id, user.id);
-        }
+        // Submit the expense
+        await ExpenseService.submitExpense(newExpense.id, user.id);
       }
 
       toast({
         title: "Success",
-        description: `Expense ${status === "draft" ? "saved as draft" : "submitted"} successfully`,
+        description: "Expense submitted successfully",
       });
 
       navigate("/expenses");
@@ -374,16 +369,7 @@ export default function ExpenseForm() {
             Cancel
           </Button>
           <Button
-            onClick={() => saveExpense("draft")}
-            disabled={loading}
-            className="w-full sm:w-auto"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Save Draft</span>
-            <span className="sm:hidden">Draft</span>
-          </Button>
-          <Button
-            onClick={() => saveExpense("submitted")}
+            onClick={() => saveExpense()}
             disabled={loading}
             className="w-full sm:w-auto"
           >
@@ -422,58 +408,30 @@ export default function ExpenseForm() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Start Date *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !expense.trip_start && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {expense.trip_start ? format(expense.trip_start, "PPP") : "Pick a date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={expense.trip_start}
-                      onSelect={(date) => date && setExpense({ ...expense, trip_start: date })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <Label>End Date *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !expense.trip_end && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {expense.trip_end ? format(expense.trip_end, "PPP") : "Pick a date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={expense.trip_end}
-                      onSelect={(date) => date && setExpense({ ...expense, trip_end: date })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+            <div className="space-y-2">
+              <Label>Expense Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !expense.expense_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {expense.expense_date ? format(expense.expense_date, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={expense.expense_date}
+                    onSelect={(date) => date && setExpense({ ...expense, expense_date: date })}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-2">

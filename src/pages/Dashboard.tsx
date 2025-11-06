@@ -11,7 +11,6 @@ interface DashboardStats {
   totalExpenses: number;
   pendingAmount: number;
   approvedAmount: number;
-  rejectedCount: number;
   currentBalance: number;
 }
 
@@ -21,7 +20,6 @@ export default function Dashboard() {
     totalExpenses: 0,
     pendingAmount: 0,
     approvedAmount: 0,
-    rejectedCount: 0,
     currentBalance: 0,
   });
   const [loading, setLoading] = useState(true);
@@ -55,12 +53,11 @@ export default function Dashboard() {
       const stats: DashboardStats = {
         totalExpenses: expenses.length,
         pendingAmount: expenses
-          .filter((e) => ["submitted", "under_review", "verified"].includes(e.status))
+          .filter((e) => ["submitted", "verified"].includes(e.status))
           .reduce((sum, e) => sum + Number(e.total_amount), 0),
         approvedAmount: expenses
-          .filter((e) => ["approved", "paid"].includes(e.status))
+          .filter((e) => e.status === "approved")
           .reduce((sum, e) => sum + Number(e.total_amount), 0),
-        rejectedCount: expenses.filter((e) => e.status === "rejected").length,
         currentBalance: profile?.balance ?? 0,
       };
 
@@ -97,12 +94,6 @@ export default function Dashboard() {
       value: formatINR(stats.approvedAmount),
       icon: CheckCircle,
       description: "Approved expenses",
-    },
-    {
-      title: "Rejected",
-      value: stats.rejectedCount,
-      icon: XCircle,
-      description: "Rejected expenses",
     },
   ];
 

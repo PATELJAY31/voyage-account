@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatINR } from "@/lib/format";
 
 interface UserRow {
   user_id: string;
@@ -37,6 +38,7 @@ export default function Reports() {
   const [selectedUserId, setSelectedUserId] = useState<string>("all");
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [viewType, setViewType] = useState<"users" | "expenses" | "users_expenses">("users");
 
   const balanceMinNum = useMemo(() => (minBalance === "" ? undefined : Number(minBalance)), [minBalance]);
   const balanceMaxNum = useMemo(() => (maxBalance === "" ? undefined : Number(maxBalance)), [maxBalance]);
@@ -293,6 +295,146 @@ export default function Reports() {
     return value;
   };
 
+  // Derived rows for on-screen report view
+  const viewRows = useMemo(() => {
+    if (viewType === "users") {
+      return filteredUsers.map(u => ({
+        user_id: u.user_id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        balance: u.balance,
+      }));
+    }
+    if (viewType === "expenses") {
+      return expenses.map(e => {
+        const u = usersById.get(e.user_id);
+        return {
+          expense_id: e.id,
+          user_id: e.user_id,
+          name: u?.name || "",
+          email: u?.email || "",
+          title: e.title || "",
+          amount: Number(e.total_amount ?? 0),
+          status: e.status || "",
+          category: (e as any).category || "",
+          created_at: e.created_at,
+          updated_at: e.updated_at || "",
+        };
+      });
+    }
+    // users_expenses
+    return expenses
+      .filter(e => usersById.has(e.user_id))
+      .map(e => {
+        const u = usersById.get(e.user_id)!;
+        return {
+          user_id: u.user_id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          balance: u.balance,
+          expense_id: e.id,
+          title: e.title || "",
+          amount: Number(e.total_amount ?? 0),
+          status: e.status || "",
+          category: (e as any).category || "",
+          created_at: e.created_at,
+          updated_at: e.updated_at || "",
+        };
+      });
+  }, [viewType, filteredUsers, expenses, usersById]);
+
+  const viewTotals = useMemo(() => {
+    if (viewRows.length === 0) return {} as Record<string, any>;
+    if (viewType === "users") {
+      const totalBalance = viewRows.reduce((sum: number, r: any) => sum + Number(r.balance || 0), 0);
+      return { user_id: "", name: "", email: "", role: "TOTAL", balance: totalBalance };
+    }
+    if (viewType === "expenses") {
+      const totalAmount = viewRows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+      return { expense_id: "", user_id: "", name: "", email: "", title: "TOTAL", amount: totalAmount, status: "", category: "", created_at: "", updated_at: "" };
+    }
+    // users_expenses
+    const totalBalance = viewRows.reduce((sum: number, r: any) => sum + Number(r.balance || 0), 0);
+    const totalAmount = viewRows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+    return { user_id: "", name: "", email: "", role: "TOTAL", balance: totalBalance, expense_id: "", title: "", amount: totalAmount, status: "", category: "", created_at: "", updated_at: "" };
+  }, [viewRows, viewType]);
+
+  const viewHeaders = useMemo(() => {
+    if (viewRows.length === 0) return [] as string[];
+    return Object.keys(viewRows[0]);
+  }, [viewRows]);
+
+  // Format column header labels
+  const formatHeader = (key: string): string => {
+    const headerMap: Record<string, string> = {
+      user_id: "User ID",
+      expense_id: "Expense ID",
+      name: "Name",
+      email: "Email",
+      role: "Role",
+      balance: "Balance",
+      title: "Title",
+      amount: "Amount",
+      status: "Status",
+      category: "Category",
+      created_at: "Created At",
+      updated_at: "Updated At",
+    };
+    return headerMap[key] || key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
+
+  // Format cell value based on column type
+  const formatCellValue = (key: string, value: any): string => {
+    if (value === null || value === undefined || value === '') return '-';
+    
+    // Format currency
+    if (key === 'balance' || key === 'amount') {
+      return formatINR(Number(value) || 0);
+    }
+    
+    // Format dates
+    if (key === 'created_at' || key === 'updated_at') {
+      if (!value) return '-';
+      try {
+        const date = new Date(value);
+        return date.toLocaleDateString('en-IN', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch {
+        return String(value);
+      }
+    }
+    
+    // Format status
+    if (key === 'status') {
+      return String(value).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
+    
+    // Format role
+    if (key === 'role') {
+      return String(value).charAt(0).toUpperCase() + String(value).slice(1);
+    }
+    
+    // Truncate long IDs
+    if (key === 'user_id' || key === 'expense_id') {
+      const str = String(value);
+      return str.length > 8 ? `${str.substring(0, 8)}...` : str;
+    }
+    
+    return String(value);
+  };
+
+  // Check if column should be right-aligned
+  const isNumericColumn = (key: string): boolean => {
+    return key === 'balance' || key === 'amount';
+  };
+
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
@@ -372,6 +514,94 @@ export default function Reports() {
           <Button onClick={usersCsv} disabled={loading}>Download Users CSV</Button>
           <Button onClick={expensesCsv} disabled={loading}>Download Expenses CSV</Button>
           <Button onClick={usersAndExpensesCsv} disabled={loading}>Download Users+Expenses CSV</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-md border-0">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Report View</CardTitle>
+              <CardDescription>View filtered data with totals - {viewRows.length} row{viewRows.length !== 1 ? 's' : ''}</CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant={viewType === 'users' ? 'default' : 'outline'} size="sm" onClick={() => setViewType('users')}>Users</Button>
+              <Button variant={viewType === 'expenses' ? 'default' : 'outline'} size="sm" onClick={() => setViewType('expenses')}>Expenses</Button>
+              <Button variant={viewType === 'users_expenses' ? 'default' : 'outline'} size="sm" onClick={() => setViewType('users_expenses')}>Users+Expenses</Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="overflow-x-auto border rounded-lg shadow-sm">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-100 border-b-2 border-slate-200">
+                <tr>
+                  {viewHeaders.map(h => (
+                    <th 
+                      key={h} 
+                      className={`px-4 py-3 font-semibold text-slate-700 whitespace-nowrap ${
+                        isNumericColumn(h) ? 'text-right' : 'text-left'
+                      }`}
+                    >
+                      {formatHeader(h)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {viewRows.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-slate-500 italic" colSpan={viewHeaders.length}>
+                      No data available. Apply filters or check your data.
+                    </td>
+                  </tr>
+                )}
+                {viewRows.map((r, idx) => (
+                  <tr 
+                    key={idx} 
+                    className={`hover:bg-slate-50 transition-colors ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                    }`}
+                  >
+                    {viewHeaders.map(h => (
+                      <td 
+                        key={h} 
+                        className={`px-4 py-2.5 whitespace-nowrap ${
+                          isNumericColumn(h) ? 'text-right font-medium' : 'text-left'
+                        } ${
+                          (h === 'balance' || h === 'amount') ? 'text-slate-900' : 'text-slate-700'
+                        }`}
+                      >
+                        {formatCellValue(h, (r as any)[h])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+              {viewRows.length > 0 && Object.keys(viewTotals).length > 0 && (
+                <tfoot className="bg-slate-200 border-t-2 border-slate-300">
+                  <tr>
+                    {viewHeaders.map(h => {
+                      const totalValue = (viewTotals as any)[h];
+                      const isTotalLabel = totalValue === 'TOTAL' || totalValue === '';
+                      return (
+                        <td 
+                          key={h} 
+                          className={`px-4 py-3 font-bold whitespace-nowrap ${
+                            isNumericColumn(h) ? 'text-right' : 'text-left'
+                          } ${
+                            isTotalLabel ? 'text-slate-600' : 'text-slate-900'
+                          }`}
+                        >
+                          {isTotalLabel ? totalValue : formatCellValue(h, totalValue)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>

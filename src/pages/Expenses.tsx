@@ -188,13 +188,9 @@ export default function Expenses() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="submitted">Submitted</SelectItem>
-                  <SelectItem value="under_review">Under Review</SelectItem>
                   <SelectItem value="verified">Verified</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={sortBy} onValueChange={setSortBy}>
@@ -278,7 +274,7 @@ export default function Expenses() {
                         >
                           View
                         </Button>
-                        {expense.status === "draft" && (
+                        {expense.status === "submitted" && (
                           <Button
                             variant="ghost"
                             size="sm"

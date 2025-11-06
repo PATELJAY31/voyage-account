@@ -93,7 +93,7 @@ export default function EngineerReview() {
         .from("expenses")
         .select("*")
         .eq("assigned_engineer_id", user?.id)
-        .in("status", ["under_review", "verified"])
+        .in("status", ["submitted", "verified"])
         .order("created_at", { ascending: false });
 
       if (expensesError) throw expensesError;
@@ -157,7 +157,7 @@ export default function EngineerReview() {
     }
   };
 
-  const updateExpenseStatus = async (status: "verified" | "rejected") => {
+  const verifyExpense = async () => {
     if (!selectedExpense || !user) return;
 
     try {
@@ -166,13 +166,12 @@ export default function EngineerReview() {
       await ExpenseService.verifyExpense(
         selectedExpense.id, 
         user.id, 
-        status === "verified", 
         engineerComment
       );
 
       toast({
         title: "Success",
-        description: `Expense ${status} successfully`,
+        description: "Expense verified successfully",
       });
 
       setSelectedExpense(null);
@@ -181,11 +180,11 @@ export default function EngineerReview() {
       setAttachments([]);
       fetchAssignedExpenses();
     } catch (error: any) {
-      console.error("Error updating expense:", error);
+      console.error("Error verifying expense:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to update expense",
+        description: error.message || "Failed to verify expense",
       });
     } finally {
       setReviewLoading(false);
@@ -194,12 +193,12 @@ export default function EngineerReview() {
 
   const isActionDisabled = (exp?: Expense | null) => {
     if (!exp) return true;
-    return ["approved", "paid", "rejected", "verified"].includes(exp.status);
+    return ["approved", "verified"].includes(exp.status);
   };
 
   const getStats = () => {
     const totalAssigned = expenses.length;
-    const pendingReview = expenses.filter(e => e.status === "under_review").length;
+    const pendingReview = expenses.filter(e => e.status === "submitted").length;
     const verified = expenses.filter(e => e.status === "verified").length;
     const totalAmount = expenses.reduce((sum, e) => sum + e.total_amount, 0);
 
@@ -550,15 +549,7 @@ export default function EngineerReview() {
                               Cancel
                             </Button>
                             <Button 
-                              variant="destructive"
-                              onClick={() => updateExpenseStatus("rejected")}
-                              disabled={reviewLoading || isActionDisabled(selectedExpense)}
-                            >
-                              <XCircle className="mr-2 h-4 w-4" />
-                              Reject
-                            </Button>
-                            <Button 
-                              onClick={() => updateExpenseStatus("verified")}
+                              onClick={() => verifyExpense()}
                               disabled={reviewLoading || isActionDisabled(selectedExpense)}
                             >
                               <CheckCircle className="mr-2 h-4 w-4" />

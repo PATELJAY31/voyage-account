@@ -210,7 +210,7 @@ export default function AdminPanel() {
     const { data: expensesData, error: expensesError } = await supabase
       .from("expenses")
       .select("*")
-      .in("status", ["verified", "approved", "paid"]) 
+      .in("status", ["verified", "approved"]) 
       .order("created_at", { ascending: false });
 
     if (expensesError) {
@@ -301,28 +301,6 @@ export default function AdminPanel() {
     }
   };
 
-  const rejectExpense = async () => {
-    if (!selectedExpense || !user) return;
-
-    try {
-      await ExpenseService.rejectExpense(selectedExpense.id, user.id, adminComment);
-      
-      toast({
-        title: "Expense Rejected",
-        description: "The expense has been rejected",
-      });
-
-      setSelectedExpense(null);
-      setAdminComment("");
-      fetchExpenses();
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to reject expense",
-      });
-    }
-  };
 
   const assignToEngineer = async () => {
     if (!selectedExpense || !selectedEngineer || !user) return;
@@ -358,13 +336,7 @@ export default function AdminPanel() {
           title: "Expense Approved",
           description: `Expense approved and ₹${selectedExpense.total_amount} deducted from employee balance.`,
         });
-      } else if (selectedStatus === "rejected") {
-        await ExpenseService.rejectExpense(selectedExpense.id, user.id, adminComment);
-        toast({
-          title: "Expense Rejected",
-          description: "The expense has been rejected",
-        });
-      } else if (selectedStatus === "under_review" && selectedEngineer && selectedEngineer !== "none") {
+      } else if (selectedStatus === "submitted" || selectedStatus === "verified") {
         await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
         toast({
           title: "Expense Assigned",
@@ -491,8 +463,8 @@ export default function AdminPanel() {
 
   const getStats = () => {
     const totalExpenses = expenses.length;
-    const pendingExpenses = expenses.filter(e => ["submitted", "under_review", "verified"].includes(e.status)).length;
-    const approvedExpenses = expenses.filter(e => ["approved", "paid"].includes(e.status)).length;
+    const pendingExpenses = expenses.filter(e => ["submitted", "verified"].includes(e.status)).length;
+    const approvedExpenses = expenses.filter(e => e.status === "approved").length;
     const totalAmount = expenses.reduce((sum, e) => sum + e.total_amount, 0);
 
     return {
@@ -649,13 +621,9 @@ export default function AdminPanel() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="draft">Draft</SelectItem>
                       <SelectItem value="submitted">Submitted</SelectItem>
-                      <SelectItem value="under_review">Under Review</SelectItem>
                       <SelectItem value="verified">Verified</SelectItem>
                       <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -803,18 +771,15 @@ export default function AdminPanel() {
                                     <Select 
                                       value={selectedStatus} 
                                       onValueChange={setSelectedStatus}
-                                      disabled={['approved','paid','rejected'].includes(selectedExpense.status)}
+                                      disabled={selectedExpense.status === 'approved'}
                                     >
                                       <SelectTrigger className="mt-1">
                                         <SelectValue placeholder="Select new status" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         <SelectItem value="submitted">Submitted</SelectItem>
-                                        <SelectItem value="under_review">Under Review</SelectItem>
                                         <SelectItem value="verified">Verified</SelectItem>
                                         <SelectItem value="approved">Approved</SelectItem>
-                                        <SelectItem value="rejected">Rejected</SelectItem>
-                                        <SelectItem value="paid">Paid</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </div>
@@ -872,7 +837,7 @@ export default function AdminPanel() {
                                 </Button>
                                 <Button 
                                   onClick={updateExpenseStatus} 
-                                  disabled={!selectedStatus || ['approved','paid','rejected'].includes(selectedExpense?.status || '')}
+                                  disabled={!selectedStatus || selectedExpense?.status === 'approved'}
                                 >
                                   Update Status
                                 </Button>
