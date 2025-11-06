@@ -6,7 +6,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { formatINR } from "@/lib/format";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Eye, FileText } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+interface ExpenseWithUser {
+  id: string;
+  user_id: string;
+  title: string | null;
+  total_amount: number | null;
+  status: string | null;
+  created_at: string;
+  trip_start: string;
+  trip_end: string;
+  category: string | null;
+  purpose?: string | null;
+  user_name: string;
+  user_email: string;
+}
 
 interface UserRow {
   user_id: string;
@@ -16,44 +36,51 @@ interface UserRow {
   role: string;
 }
 
-interface ExpenseRow {
-  id: string;
-  user_id: string;
-  title: string | null;
-  total_amount: number | null;
-  status: string | null;
-  created_at: string;
-  updated_at: string | null;
-}
-
 export default function Reports() {
   const { userRole } = useAuth();
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
-  const [minBalance, setMinBalance] = useState<string>("");
-  const [maxBalance, setMaxBalance] = useState<string>("");
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<"verification" | "approval" | "detailed">("verification");
+  
+  // Common filters
+  const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [engineerStatus, setEngineerStatus] = useState<string>("verified");
+  const [hoStatus, setHoStatus] = useState<string>("approved");
+  
+  // Detailed report filters
+  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedWeek, setSelectedWeek] = useState<string>("all");
+  const [lpoNumber, setLpoNumber] = useState<string>("");
+  
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserRow[]>([]);
-  const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>("all");
   const [categories, setCategories] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [viewType, setViewType] = useState<"users" | "expenses" | "users_expenses">("users");
-
-  const balanceMinNum = useMemo(() => (minBalance === "" ? undefined : Number(minBalance)), [minBalance]);
-  const balanceMaxNum = useMemo(() => (maxBalance === "" ? undefined : Number(maxBalance)), [maxBalance]);
+  const [verificationExpenses, setVerificationExpenses] = useState<ExpenseWithUser[]>([]);
+  const [approvalExpenses, setApprovalExpenses] = useState<ExpenseWithUser[]>([]);
+  const [detailedExpenses, setDetailedExpenses] = useState<ExpenseWithUser[]>([]);
 
   useEffect(() => {
     if (userRole === "admin") {
       void fetchUsers();
-      void fetchExpenses();
       void fetchCategories();
     }
   }, [userRole]);
 
+  useEffect(() => {
+    if (userRole === "admin") {
+      if (activeTab === "verification") {
+        void fetchVerificationExpenses();
+      } else if (activeTab === "approval") {
+        void fetchApprovalExpenses();
+      } else if (activeTab === "detailed") {
+        void fetchDetailedExpenses();
+      }
+    }
+  }, [userRole, activeTab, selectedEmployee, selectedCategory, engineerStatus, hoStatus, selectedYear, selectedMonth, selectedWeek, lpoNumber]);
+
   const fetchUsers = async () => {
     try {
-      setLoading(true);
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("user_id, name, email, balance");
@@ -78,56 +105,17 @@ export default function Reports() {
       setUsers(combined);
     } catch (e) {
       console.error("Failed to fetch users for reports", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchExpenses = async () => {
-    try {
-      setLoading(true);
-      // First try with category (if exists)
-      let query = supabase
-        .from("expenses")
-        .select("id, user_id, title, total_amount, status, created_at, updated_at, category");
-      if (fromDate) query = query.gte("created_at", new Date(fromDate).toISOString());
-      if (toDate) {
-        const end = new Date(toDate); end.setHours(23,59,59,999); query = query.lte("created_at", end.toISOString());
-      }
-      if (selectedUserId !== "all") query = query.eq("user_id", selectedUserId);
-      if (selectedCategory !== "all") query = query.eq("category", selectedCategory);
-      let { data, error } = await query.order("created_at", { ascending: false });
-      if (error && (error as any).code === '42703') {
-        // Retry without category column/filter
-        let q2 = supabase
-          .from("expenses")
-          .select("id, user_id, title, total_amount, status, created_at, updated_at");
-        if (fromDate) q2 = q2.gte("created_at", new Date(fromDate).toISOString());
-        if (toDate) { const end = new Date(toDate); end.setHours(23,59,59,999); q2 = q2.lte("created_at", end.toISOString()); }
-        if (selectedUserId !== "all") q2 = q2.eq("user_id", selectedUserId);
-        const res2 = await q2.order("created_at", { ascending: false });
-        data = res2.data as any;
-        error = res2.error as any;
-      }
-      if (error) throw error;
-      setExpenses((data as ExpenseRow[]) || []);
-    } catch (e) {
-      console.error("Failed to fetch expenses for reports", e);
-    } finally {
-      setLoading(false);
     }
   };
 
   const fetchCategories = async () => {
     try {
-      // Try with is_active first
       let { data, error } = await supabase
         .from("expense_categories")
         .select("name")
         .eq("is_active", true)
         .order("name", { ascending: true });
       if (error && (error as any).code === '42703') {
-        // Retry with active, then without filter
         let r2 = await supabase
           .from("expense_categories")
           .select("name")
@@ -147,465 +135,691 @@ export default function Reports() {
       if (error) throw error;
       setCategories((data || []).map((r: any) => r.name));
     } catch (e) {
-      console.warn("Categories not available or failed to load; category filter will be limited.", e);
+      console.warn("Categories not available", e);
       setCategories([]);
     }
   };
 
-  const filteredUsers = useMemo(() => {
-    return users.filter(u => {
-      if (selectedUserId !== "all" && u.user_id !== selectedUserId) return false;
-      if (typeof balanceMinNum === "number" && u.balance < balanceMinNum) return false;
-      if (typeof balanceMaxNum === "number" && u.balance > balanceMaxNum) return false;
-      return true;
-    });
-  }, [users, balanceMinNum, balanceMaxNum, selectedUserId]);
+  const fetchVerificationExpenses = async () => {
+    try {
+      setLoading(true);
+      let query = supabase
+        .from("expenses")
+        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category")
+        .eq("status", "verified");
+      
+      if (selectedEmployee !== "all") query = query.eq("user_id", selectedEmployee);
+      if (selectedCategory !== "all") query = query.eq("category", selectedCategory);
+      
+      const { data, error } = await query.order("created_at", { ascending: false });
+      if (error) throw error;
 
-  const usersById = useMemo(() => new Map(filteredUsers.map(u => [u.user_id, u])), [filteredUsers]);
-
-  const usersCsv = () => {
-    const rows = filteredUsers.map(u => ({
-      user_id: u.user_id,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      balance: u.balance,
-    }));
-    const totalBalance = rows.reduce((sum, r) => sum + Number(r.balance || 0), 0);
-    const totalsRow: Record<string, any> = rows.length > 0 ? {
-      user_id: "",
-      name: "",
-      email: "",
-      role: "TOTAL",
-      balance: totalBalance,
-    } : {};
-    downloadCsv("users.csv", rows, totalsRow);
-  };
-
-  const expensesCsv = () => {
-    const rows = expenses.map(e => {
-      const u = usersById.get(e.user_id);
-      return {
-        expense_id: e.id,
-        user_id: e.user_id,
-        name: u?.name || "",
-        email: u?.email || "",
-        title: e.title || "",
-        amount: Number(e.total_amount ?? 0),
-        status: e.status || "",
-        category: (e as any).category || "",
-        created_at: e.created_at,
-        updated_at: e.updated_at || "",
-      };
-    });
-    const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-    const totalsRow: Record<string, any> = rows.length > 0 ? {
-      expense_id: "",
-      user_id: "",
-      name: "",
-      email: "",
-      title: "TOTAL",
-      amount: totalAmount,
-      status: "",
-      category: rows[0].hasOwnProperty("category") ? "" : undefined,
-      created_at: "",
-      updated_at: "",
-    } : {};
-    downloadCsv("expenses.csv", rows, totalsRow);
-  };
-
-  const usersAndExpensesCsv = () => {
-    // Apply both filters: user balance range and expense date range already applied
-    const rows = expenses
-      .filter(e => usersById.has(e.user_id))
-      .map(e => {
-        const u = usersById.get(e.user_id)!;
-        return {
-          user_id: u.user_id,
-          name: u.name,
-          email: u.email,
-          role: u.role,
-          balance: u.balance,
-          expense_id: e.id,
-          title: e.title || "",
-          amount: Number(e.total_amount ?? 0),
-          status: e.status || "",
-          category: (e as any).category || "",
-          created_at: e.created_at,
-          updated_at: e.updated_at || "",
-        };
-      });
-    const totalBalance = rows.reduce((sum, r) => sum + Number(r.balance || 0), 0);
-    const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-    const totalsRow: Record<string, any> = rows.length > 0 ? {
-      user_id: "",
-      name: "",
-      email: "",
-      role: "TOTAL",
-      balance: totalBalance,
-      expense_id: "",
-      title: "",
-      amount: totalAmount,
-      status: "",
-      category: rows[0].hasOwnProperty("category") ? "" : undefined,
-      created_at: "",
-      updated_at: "",
-    } : {};
-    downloadCsv("users_expenses.csv", rows, totalsRow);
-  };
-
-  const downloadCsv = (filename: string, data: Record<string, any>[], totalsRow?: Record<string, any>) => {
-    if (!data || data.length === 0) {
-      // create empty with message
-      const blob = new Blob(["No data"], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      return;
-    }
-    const headers = Object.keys(data[0]);
-    const lines: string[] = [];
-    lines.push(headers.join(","));
-    for (const row of data) {
-      lines.push(headers.map(h => escapeCsv(String(row[h] ?? ""))).join(","));
-    }
-    if (totalsRow && Object.keys(totalsRow).length > 0) {
-      // Ensure totals row aligns to headers; fill missing keys
-      const normalized: Record<string, any> = {};
-      headers.forEach(h => { normalized[h] = totalsRow[h] ?? ""; });
-      lines.push(headers.map(h => escapeCsv(String(normalized[h]))).join(","));
-    }
-    const csv = lines.join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const escapeCsv = (value: string) => {
-    if (value.includes(",") || value.includes("\n") || value.includes('"')) {
-      return '"' + value.replace(/"/g, '""') + '"';
-    }
-    return value;
-  };
-
-  // Derived rows for on-screen report view
-  const viewRows = useMemo(() => {
-    if (viewType === "users") {
-      return filteredUsers.map(u => ({
-        user_id: u.user_id,
-        name: u.name,
-        email: u.email,
-        role: u.role,
-        balance: u.balance,
-      }));
-    }
-    if (viewType === "expenses") {
-      return expenses.map(e => {
-        const u = usersById.get(e.user_id);
-        return {
-          expense_id: e.id,
-          user_id: e.user_id,
-          name: u?.name || "",
-          email: u?.email || "",
-          title: e.title || "",
-          amount: Number(e.total_amount ?? 0),
-          status: e.status || "",
-          category: (e as any).category || "",
-          created_at: e.created_at,
-          updated_at: e.updated_at || "",
-        };
-      });
-    }
-    // users_expenses
-    return expenses
-      .filter(e => usersById.has(e.user_id))
-      .map(e => {
-        const u = usersById.get(e.user_id)!;
-        return {
-          user_id: u.user_id,
-          name: u.name,
-          email: u.email,
-          role: u.role,
-          balance: u.balance,
-          expense_id: e.id,
-          title: e.title || "",
-          amount: Number(e.total_amount ?? 0),
-          status: e.status || "",
-          category: (e as any).category || "",
-          created_at: e.created_at,
-          updated_at: e.updated_at || "",
-        };
-      });
-  }, [viewType, filteredUsers, expenses, usersById]);
-
-  const viewTotals = useMemo(() => {
-    if (viewRows.length === 0) return {} as Record<string, any>;
-    if (viewType === "users") {
-      const totalBalance = viewRows.reduce((sum: number, r: any) => sum + Number(r.balance || 0), 0);
-      return { user_id: "", name: "", email: "", role: "TOTAL", balance: totalBalance };
-    }
-    if (viewType === "expenses") {
-      const totalAmount = viewRows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-      return { expense_id: "", user_id: "", name: "", email: "", title: "TOTAL", amount: totalAmount, status: "", category: "", created_at: "", updated_at: "" };
-    }
-    // users_expenses
-    const totalBalance = viewRows.reduce((sum: number, r: any) => sum + Number(r.balance || 0), 0);
-    const totalAmount = viewRows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-    return { user_id: "", name: "", email: "", role: "TOTAL", balance: totalBalance, expense_id: "", title: "", amount: totalAmount, status: "", category: "", created_at: "", updated_at: "" };
-  }, [viewRows, viewType]);
-
-  const viewHeaders = useMemo(() => {
-    if (viewRows.length === 0) return [] as string[];
-    return Object.keys(viewRows[0]);
-  }, [viewRows]);
-
-  // Format column header labels
-  const formatHeader = (key: string): string => {
-    const headerMap: Record<string, string> = {
-      user_id: "User ID",
-      expense_id: "Expense ID",
-      name: "Name",
-      email: "Email",
-      role: "Role",
-      balance: "Balance",
-      title: "Title",
-      amount: "Amount",
-      status: "Status",
-      category: "Category",
-      created_at: "Created At",
-      updated_at: "Updated At",
-    };
-    return headerMap[key] || key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  };
-
-  // Format cell value based on column type
-  const formatCellValue = (key: string, value: any): string => {
-    if (value === null || value === undefined || value === '') return '-';
-    
-    // Format currency
-    if (key === 'balance' || key === 'amount') {
-      return formatINR(Number(value) || 0);
-    }
-    
-    // Format dates
-    if (key === 'created_at' || key === 'updated_at') {
-      if (!value) return '-';
-      try {
-        const date = new Date(value);
-        return date.toLocaleDateString('en-IN', { 
-          year: 'numeric', 
-          month: 'short', 
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      } catch {
-        return String(value);
+      if (!data || data.length === 0) {
+        setVerificationExpenses([]);
+        return;
       }
+
+      const userIds = [...new Set(data.map(e => e.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, name, email")
+        .in("user_id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      const expensesWithUsers: ExpenseWithUser[] = data.map(expense => {
+        const profile = profiles?.find(p => p.user_id === expense.user_id);
+        return {
+          ...expense,
+          user_name: profile?.name || "Unknown User",
+          user_email: profile?.email || "",
+        } as ExpenseWithUser;
+      });
+
+      setVerificationExpenses(expensesWithUsers);
+    } catch (e) {
+      console.error("Failed to fetch verification expenses", e);
+    } finally {
+      setLoading(false);
     }
-    
-    // Format status
-    if (key === 'status') {
-      return String(value).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    }
-    
-    // Format role
-    if (key === 'role') {
-      return String(value).charAt(0).toUpperCase() + String(value).slice(1);
-    }
-    
-    // Truncate long IDs
-    if (key === 'user_id' || key === 'expense_id') {
-      const str = String(value);
-      return str.length > 8 ? `${str.substring(0, 8)}...` : str;
-    }
-    
-    return String(value);
   };
 
-  // Check if column should be right-aligned
-  const isNumericColumn = (key: string): boolean => {
-    return key === 'balance' || key === 'amount';
+  const fetchApprovalExpenses = async () => {
+    try {
+      setLoading(true);
+      let query = supabase
+        .from("expenses")
+        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category")
+        .eq("status", "approved");
+      
+      if (selectedEmployee !== "all") query = query.eq("user_id", selectedEmployee);
+      if (selectedCategory !== "all") query = query.eq("category", selectedCategory);
+      
+      const { data, error } = await query.order("created_at", { ascending: false });
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        setApprovalExpenses([]);
+        return;
+      }
+
+      const userIds = [...new Set(data.map(e => e.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, name, email")
+        .in("user_id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      const expensesWithUsers: ExpenseWithUser[] = data.map(expense => {
+        const profile = profiles?.find(p => p.user_id === expense.user_id);
+        return {
+          ...expense,
+          user_name: profile?.name || "Unknown User",
+          user_email: profile?.email || "",
+        } as ExpenseWithUser;
+      });
+
+      setApprovalExpenses(expensesWithUsers);
+    } catch (e) {
+      console.error("Failed to fetch approval expenses", e);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const fetchDetailedExpenses = async () => {
+    try {
+      setLoading(true);
+      let query = supabase
+        .from("expenses")
+        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category, purpose");
+      
+      if (selectedEmployee !== "all") query = query.eq("user_id", selectedEmployee);
+      if (selectedCategory !== "all") query = query.eq("category", selectedCategory);
+      
+      // Year filter
+      if (selectedYear) {
+        const yearStart = new Date(`${selectedYear}-01-01`);
+        const yearEnd = new Date(`${selectedYear}-12-31`);
+        yearEnd.setHours(23, 59, 59, 999);
+        query = query.gte("trip_start", yearStart.toISOString().split('T')[0])
+                    .lte("trip_start", yearEnd.toISOString().split('T')[0]);
+      }
+      
+      // Month filter
+      if (selectedMonth !== "all" && selectedYear) {
+        const monthNum = parseInt(selectedMonth);
+        const monthStart = new Date(parseInt(selectedYear), monthNum - 1, 1);
+        const monthEnd = new Date(parseInt(selectedYear), monthNum, 0);
+        query = query.gte("trip_start", monthStart.toISOString().split('T')[0])
+                    .lte("trip_start", monthEnd.toISOString().split('T')[0]);
+      }
+      
+      const { data, error } = await query.order("trip_start", { ascending: false });
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        setDetailedExpenses([]);
+        return;
+      }
+
+      const userIds = [...new Set(data.map(e => e.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, name, email")
+        .in("user_id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      const expensesWithUsers: ExpenseWithUser[] = data.map(expense => {
+        const profile = profiles?.find(p => p.user_id === expense.user_id);
+        return {
+          ...expense,
+          user_name: profile?.name || "Unknown User",
+          user_email: profile?.email || "",
+        } as ExpenseWithUser;
+      });
+
+      setDetailedExpenses(expensesWithUsers);
+    } catch (e) {
+      console.error("Failed to fetch detailed expenses", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDateDDMMYYYY = (dateString: string | null): string => {
+    if (!dateString) return "-";
+    try {
+      const date = new Date(dateString);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    } catch {
+      return "-";
+    }
+  };
+
+  const clearFilters = () => {
+    setSelectedEmployee("all");
+    setSelectedCategory("all");
+    setEngineerStatus("verified");
+    setHoStatus("approved");
+    setSelectedYear(new Date().getFullYear().toString());
+    setSelectedMonth("all");
+    setSelectedWeek("all");
+    setLpoNumber("");
+  };
+
+  // Calculate summary for detailed report
+  const detailedSummary = useMemo(() => {
+    const summary: Record<string, number> = {};
+    detailedExpenses.forEach(exp => {
+      const cat = exp.category || "Other";
+      summary[cat] = (summary[cat] || 0) + Number(exp.total_amount || 0);
+    });
+    return summary;
+  }, [detailedExpenses]);
+
+  const totalAmount = useMemo(() => {
+    return detailedExpenses.reduce((sum, exp) => sum + Number(exp.total_amount || 0), 0);
+  }, [detailedExpenses]);
+
+  // Get selected user for detailed report
+  const selectedUser = useMemo(() => {
+    if (selectedEmployee === "all") return null;
+    return users.find(u => u.user_id === selectedEmployee);
+  }, [selectedEmployee, users]);
+
+  // Calculate opening/closing balance for detailed report
+  const balanceInfo = useMemo(() => {
+    if (!selectedUser) return { opening: 0, allocated: 0, closing: 0 };
+    
+    const allocated = detailedExpenses.reduce((sum, exp) => {
+      // Only count approved expenses as allocated (these were deducted from balance)
+      if (exp.status === "approved") {
+        return sum + Number(exp.total_amount || 0);
+      }
+      return sum;
+    }, 0);
+    
+    // Opening balance = current balance + allocated (since allocated was deducted)
+    const opening = Number(selectedUser.balance) + allocated;
+    // Closing balance = current balance
+    const closing = Number(selectedUser.balance);
+    
+    return { opening, allocated, closing };
+  }, [selectedUser, detailedExpenses]);
+
+  if (userRole !== "admin") {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-slate-500">Access denied. Admin only.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold">Reports</h1>
-        <p className="text-sm text-slate-600">Export Users, Expenses, or Users+Expenses with filters</p>
+        <h1 className="text-3xl font-bold">Reports</h1>
+        <p className="text-sm text-slate-600">View and manage expense reports</p>
       </div>
 
-      <Card className="shadow-md border-0">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>Date range applies to expenses; balance range applies to users</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>From date</Label>
-              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>To date</Label>
-              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Min balance</Label>
-              <Input type="number" inputMode="decimal" value={minBalance} onChange={(e) => setMinBalance(e.target.value)} placeholder="e.g. 0" />
-            </div>
-            <div className="space-y-2">
-              <Label>Max balance</Label>
-              <Input type="number" inputMode="decimal" value={maxBalance} onChange={(e) => setMaxBalance(e.target.value)} placeholder="e.g. 10000" />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>User</Label>
-              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All users" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All users</SelectItem>
-                  {users.map(u => (
-                    <SelectItem key={u.user_id} value={u.user_id}>{u.name || u.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All categories</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <Button variant="outline" onClick={() => { setFromDate(""); setToDate(""); setMinBalance(""); setMaxBalance(""); setSelectedUserId("all"); setSelectedCategory("all"); }}>Clear</Button>
-            <Button onClick={() => { void fetchUsers(); void fetchExpenses(); }} disabled={loading}>Apply</Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="verification">Claim Verification List</TabsTrigger>
+          <TabsTrigger value="approval">Claim Approval List</TabsTrigger>
+          <TabsTrigger value="detailed">Detailed Expense Report</TabsTrigger>
+        </TabsList>
 
-      <Card className="shadow-md border-0">
-        <CardHeader>
-          <CardTitle>Export</CardTitle>
-          <CardDescription>Download CSV files</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          <Button onClick={usersCsv} disabled={loading}>Download Users CSV</Button>
-          <Button onClick={expensesCsv} disabled={loading}>Download Expenses CSV</Button>
-          <Button onClick={usersAndExpensesCsv} disabled={loading}>Download Users+Expenses CSV</Button>
-        </CardContent>
-      </Card>
+        {/* Claim Verification List */}
+        <TabsContent value="verification" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>CLAIM VERIFICATION LIST</CardTitle>
+              <CardDescription>Expenses verified by engineers, pending admin approval</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">APPLIED FILTER</Label>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Employee</Label>
+                    <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All employees" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All employees</SelectItem>
+                        {users.filter(u => u.role === "employee").map(u => (
+                          <SelectItem key={u.user_id} value={u.user_id}>{u.name || u.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Expense Type</Label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        {categories.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Engineer Approval Status</Label>
+                    <Select value={engineerStatus} onValueChange={setEngineerStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="verified">Verified</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={fetchVerificationExpenses} disabled={loading}>Submit</Button>
+                  <Button variant="outline" onClick={clearFilters}>Clear</Button>
+                </div>
+              </div>
 
-      <Card className="shadow-md border-0">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Report View</CardTitle>
-              <CardDescription>View filtered data with totals - {viewRows.length} row{viewRows.length !== 1 ? 's' : ''}</CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant={viewType === 'users' ? 'default' : 'outline'} size="sm" onClick={() => setViewType('users')}>Users</Button>
-              <Button variant={viewType === 'expenses' ? 'default' : 'outline'} size="sm" onClick={() => setViewType('expenses')}>Expenses</Button>
-              <Button variant={viewType === 'users_expenses' ? 'default' : 'outline'} size="sm" onClick={() => setViewType('users_expenses')}>Users+Expenses</Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="overflow-x-auto border rounded-lg shadow-sm">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-100 border-b-2 border-slate-200">
-                <tr>
-                  {viewHeaders.map(h => (
-                    <th 
-                      key={h} 
-                      className={`px-4 py-3 font-semibold text-slate-700 whitespace-nowrap ${
-                        isNumericColumn(h) ? 'text-right' : 'text-left'
-                      }`}
-                    >
-                      {formatHeader(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {viewRows.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-slate-500 italic" colSpan={viewHeaders.length}>
-                      No data available. Apply filters or check your data.
-                    </td>
-                  </tr>
-                )}
-                {viewRows.map((r, idx) => (
-                  <tr 
-                    key={idx} 
-                    className={`hover:bg-slate-50 transition-colors ${
-                      idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                    }`}
-                  >
-                    {viewHeaders.map(h => (
-                      <td 
-                        key={h} 
-                        className={`px-4 py-2.5 whitespace-nowrap ${
-                          isNumericColumn(h) ? 'text-right font-medium' : 'text-left'
-                        } ${
-                          (h === 'balance' || h === 'amount') ? 'text-slate-900' : 'text-slate-700'
-                        }`}
-                      >
-                        {formatCellValue(h, (r as any)[h])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-              {viewRows.length > 0 && Object.keys(viewTotals).length > 0 && (
-                <tfoot className="bg-slate-200 border-t-2 border-slate-300">
-                  <tr>
-                    {viewHeaders.map(h => {
-                      const totalValue = (viewTotals as any)[h];
-                      const isTotalLabel = totalValue === 'TOTAL' || totalValue === '';
-                      return (
-                        <td 
-                          key={h} 
-                          className={`px-4 py-3 font-bold whitespace-nowrap ${
-                            isNumericColumn(h) ? 'text-right' : 'text-left'
-                          } ${
-                            isTotalLabel ? 'text-slate-600' : 'text-slate-900'
-                          }`}
-                        >
-                          {isTotalLabel ? totalValue : formatCellValue(h, totalValue)}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </tfoot>
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-100 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Employee</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Expense Type</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">LPO Number</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill Date (DD-MM-YYYY)</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-700">Bill Amount</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Engineer Approval</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">HO Approval</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted On (DD-MM-YYYY)</th>
+                      <th className="px-4 py-3 text-center font-semibold text-slate-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                      </tr>
+                    ) : verificationExpenses.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
+                      </tr>
+                    ) : (
+                      verificationExpenses.map(exp => (
+                        <tr key={exp.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3">{exp.user_name}</td>
+                          <td className="px-4 py-3">{exp.category || "-"}</td>
+                          <td className="px-4 py-3">-</td>
+                          <td className="px-4 py-3">{formatDateDDMMYYYY(exp.trip_start)}</td>
+                          <td className="px-4 py-3 text-right font-medium">{formatINR(Number(exp.total_amount || 0))}</td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status="verified" />
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant="secondary">Pending</Badge>
+                          </td>
+                          <td className="px-4 py-3">{formatDateDDMMYYYY(exp.created_at)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => navigate(`/expenses/${exp.id}`)}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => navigate(`/expenses/${exp.id}`)}>
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Claim Approval List */}
+        <TabsContent value="approval" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>CLAIM APPROVAL LIST</CardTitle>
+              <CardDescription>Expenses approved by admin</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">APPLIED FILTER</Label>
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="space-y-2">
+                    <Label>Employee</Label>
+                    <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All employees" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All employees</SelectItem>
+                        {users.filter(u => u.role === "employee").map(u => (
+                          <SelectItem key={u.user_id} value={u.user_id}>{u.name || u.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Expense Type</Label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        {categories.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Engineer Approval Status</Label>
+                    <Select value={engineerStatus} onValueChange={setEngineerStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="verified">Verified</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>HO Approval Status</Label>
+                    <Select value={hoStatus} onValueChange={setHoStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="approved">Approved</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={fetchApprovalExpenses} disabled={loading}>Submit</Button>
+                  <Button variant="outline" onClick={clearFilters}>Clear</Button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-100 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Employee</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Expense Type</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">LPO Number</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill Date (DD-MM-YYYY)</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-700">Bill Amount</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Engineer Approval</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">HO Approval</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted On (DD-MM-YYYY)</th>
+                      <th className="px-4 py-3 text-center font-semibold text-slate-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                      </tr>
+                    ) : approvalExpenses.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
+                      </tr>
+                    ) : (
+                      approvalExpenses.map(exp => (
+                        <tr key={exp.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3">{exp.user_name}</td>
+                          <td className="px-4 py-3">{exp.category || "-"}</td>
+                          <td className="px-4 py-3">-</td>
+                          <td className="px-4 py-3">{formatDateDDMMYYYY(exp.trip_start)}</td>
+                          <td className="px-4 py-3 text-right font-medium">{formatINR(Number(exp.total_amount || 0))}</td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status="verified" />
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status="approved" />
+                          </td>
+                          <td className="px-4 py-3">{formatDateDDMMYYYY(exp.created_at)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => navigate(`/expenses/${exp.id}`)}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => navigate(`/expenses/${exp.id}`)}>
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Detailed Expense Report */}
+        <TabsContent value="detailed" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Detailed Expense Report</CardTitle>
+              <CardDescription>View detailed expenses with balance tracking</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">FILTERS</Label>
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="space-y-2">
+                    <Label>Employee *</Label>
+                    <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select employee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All employees</SelectItem>
+                        {users.filter(u => u.role === "employee").map(u => (
+                          <SelectItem key={u.user_id} value={u.user_id}>{u.name || u.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Expense Type</Label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Expense" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        {categories.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>LPO Number</Label>
+                    <Input value={lpoNumber} onChange={(e) => setLpoNumber(e.target.value)} placeholder="Enter LPO number" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Year</Label>
+                    <Select value={selectedYear} onValueChange={setSelectedYear}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                          <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Month</Label>
+                    <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Month" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All months</SelectItem>
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const month = new Date(2000, i, 1).toLocaleString('default', { month: 'long' });
+                          return <SelectItem key={i + 1} value={(i + 1).toString()}>{month}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Week</Label>
+                    <Select value={selectedWeek} onValueChange={setSelectedWeek}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Week" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All weeks</SelectItem>
+                        {Array.from({ length: 52 }, (_, i) => (
+                          <SelectItem key={i + 1} value={(i + 1).toString()}>Week {i + 1}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={fetchDetailedExpenses} disabled={loading}>Submit</Button>
+                  <Button variant="outline" onClick={clearFilters}>Clear</Button>
+                  <Button variant="outline" onClick={() => {
+                    // Export functionality can be added here
+                    console.log("Export clicked");
+                  }}>Export</Button>
+                </div>
+              </div>
+
+              {selectedUser && (
+                <div className="space-y-2 p-4 bg-slate-50 rounded-lg">
+                  <p className="font-semibold">{selectedUser.name}</p>
+                  <p className="text-sm text-slate-600">Year : {selectedYear.slice(-2)}</p>
+                </div>
               )}
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Detailed List</h3>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-100 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill Date</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Type of Expense</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill No</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">LPO#</th>
+                          <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {selectedUser && (
+                          <>
+                            <tr className="bg-slate-50">
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3 font-medium">Opening Balance</td>
+                              <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.opening)}</td>
+                              <td className="px-4 py-3"></td>
+                            </tr>
+                            <tr className="bg-slate-50">
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3 font-medium">Allocated Amount</td>
+                              <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.allocated)}</td>
+                              <td className="px-4 py-3"></td>
+                            </tr>
+                            <tr className="bg-slate-50">
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3 font-medium">Closing Balance</td>
+                              <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.closing)}</td>
+                              <td className="px-4 py-3"></td>
+                            </tr>
+                          </>
+                        )}
+                        {loading ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                          </tr>
+                        ) : detailedExpenses.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
+                          </tr>
+                        ) : (
+                          detailedExpenses.map(exp => (
+                            <tr key={exp.id} className="hover:bg-slate-50">
+                              <td className="px-4 py-3">{formatDateDDMMYYYY(exp.trip_start)}</td>
+                              <td className="px-4 py-3">{exp.category || "-"}</td>
+                              <td className="px-4 py-3">-</td>
+                              <td className="px-4 py-3">-</td>
+                              <td className="px-4 py-3 text-right font-medium">{formatINR(Number(exp.total_amount || 0))}</td>
+                              <td className="px-4 py-3">{exp.purpose || "-"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Summary</h3>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-100 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Type of Expense</th>
+                          <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {Object.entries(detailedSummary).map(([category, amount]) => (
+                          <tr key={category} className="hover:bg-slate-50">
+                            <td className="px-4 py-3">{category}</td>
+                            <td className="px-4 py-3 text-right font-medium">{formatINR(amount)}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-200 font-bold border-t-2">
+                          <td className="px-4 py-3">Total</td>
+                          <td className="px-4 py-3 text-right">{formatINR(totalAmount)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
-
-

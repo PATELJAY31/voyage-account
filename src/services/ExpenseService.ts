@@ -482,6 +482,11 @@ export class ExpenseService {
    * Check if user has specific role
    */
   private static async hasRole(userId: string, role: "admin" | "engineer" | "employee"): Promise<boolean> {
+    // Return false if userId is empty or invalid
+    if (!userId || userId.trim() === "") {
+      return false;
+    }
+
     const { data, error } = await supabase
       .from("user_roles")
       .select("role")

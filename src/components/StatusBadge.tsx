@@ -9,16 +9,16 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" }> = {
+  const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success"; bgColor?: string }> = {
     submitted: { label: "Submitted", variant: "default" as const },
-    verified: { label: "Verified", variant: "default" as const },
-    approved: { label: "Approved", variant: "success" as const },
+    verified: { label: "Verified", variant: "default" as const, bgColor: "bg-green-100 text-green-800 border-green-200" },
+    approved: { label: "Approved", variant: "default" as const, bgColor: "bg-green-100 text-green-800 border-green-200" },
   };
 
   const config = statusConfig[status] || { label: String(status), variant: "secondary" as const };
 
   return (
-    <Badge variant={config.variant} className={cn(className)}>
+    <Badge variant={config.variant} className={cn(config.bgColor, className)}>
       {config.label}
     </Badge>
   );
