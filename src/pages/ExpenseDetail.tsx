@@ -242,7 +242,7 @@ export default function ExpenseDetail() {
   const canEdit = () => {
     if (!expense) return false;
     return (
-      (expense.user_id === user?.id && expense.status === "draft") ||
+      (expense.user_id === user?.id && expense.status === "submitted") ||
       userRole === "admin"
     );
   };
@@ -250,10 +250,7 @@ export default function ExpenseDetail() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "approved":
-      case "paid":
         return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case "rejected":
-        return <XCircle className="h-4 w-4 text-red-600" />;
       default:
         return <Clock className="h-4 w-4 text-yellow-600" />;
     }

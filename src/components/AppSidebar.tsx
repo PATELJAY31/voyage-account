@@ -8,6 +8,7 @@ import {
   BarChart3,
   FileType,
   Bell,
+  Tag,
 } from "lucide-react";
 import {
   Sidebar,
@@ -48,6 +49,7 @@ export function AppSidebar() {
     { title: "All Expenses", url: "/admin/expenses", icon: Receipt },
     { title: "Balances", url: "/balances", icon: FileText },
     { title: "Manage Users", url: "/admin/users", icon: Users },
+    { title: "Categories", url: "/admin/categories", icon: Tag },
     { title: "Reports", url: "/admin/reports", icon: FileText },
     { title: "Templates", url: "/templates", icon: FileType },
     { title: "Analytics", url: "/analytics", icon: BarChart3 },

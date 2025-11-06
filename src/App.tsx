@@ -19,6 +19,7 @@ import UserManagement from "./pages/UserManagement";
 import NotFound from "./pages/NotFound";
 import Balances from "./pages/Balances";
 import Reports from "./pages/Reports";
+import CategoryManagement from "./pages/CategoryManagement";
 
 const queryClient = new QueryClient();
 
@@ -117,6 +118,16 @@ const App = () => (
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <Layout>
                     <Reports />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/categories"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <Layout>
+                    <CategoryManagement />
                   </Layout>
                 </ProtectedRoute>
               }

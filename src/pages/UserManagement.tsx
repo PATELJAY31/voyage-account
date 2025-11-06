@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Mail, User, Shield, Settings, Sparkles, CheckCircle, AlertCircle } from "lucide-react";
+import { UserPlus, Mail, User, Shield, Settings, Sparkles, CheckCircle, AlertCircle, Edit, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const createUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -51,6 +53,18 @@ export default function UserManagement() {
     password: "",
     reportingEngineerId: "none",
   });
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToEdit, setUserToEdit] = useState<{ user_id: string; name: string; email: string; balance: number; role: string } | null>(null);
+  const [userToDelete, setUserToDelete] = useState<{ user_id: string; name: string; email: string } | null>(null);
+  const [editFormData, setEditFormData] = useState<{ name: string; email: string; role: "admin" | "engineer" | "employee" | "cashier"; reportingEngineerId: string }>({
+    name: "",
+    email: "",
+    role: "employee",
+    reportingEngineerId: "none",
+  });
+  const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     // Load engineers for assignment dropdown
@@ -312,6 +326,213 @@ export default function UserManagement() {
     setFormData(prev => ({ ...prev, password }));
   };
 
+  const openEditDialog = (u: { user_id: string; name: string; email: string; balance: number; role: string }) => {
+    setUserToEdit(u);
+    // Fetch reporting engineer if employee
+    const fetchReportingEngineer = async () => {
+      if (u.role === "employee") {
+        try {
+          const { data } = await supabase
+            .from("profiles")
+            .select("reporting_engineer_id")
+            .eq("user_id", u.user_id)
+            .single();
+          setEditFormData({
+            name: u.name,
+            email: u.email,
+            role: u.role as "admin" | "engineer" | "employee" | "cashier",
+            reportingEngineerId: (data as any)?.reporting_engineer_id || "none",
+          });
+        } catch (e) {
+          setEditFormData({
+            name: u.name,
+            email: u.email,
+            role: u.role as "admin" | "engineer" | "employee" | "cashier",
+            reportingEngineerId: "none",
+          });
+        }
+      } else {
+        setEditFormData({
+          name: u.name,
+          email: u.email,
+          role: u.role as "admin" | "engineer" | "employee" | "cashier",
+          reportingEngineerId: "none",
+        });
+      }
+    };
+    fetchReportingEngineer();
+    setEditDialogOpen(true);
+  };
+
+  const openDeleteDialog = (u: { user_id: string; name: string; email: string }) => {
+    setUserToDelete(u);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!userToEdit) return;
+
+    try {
+      setUpdating(true);
+
+      // Update profile (name, email)
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          name: editFormData.name,
+          email: editFormData.email,
+          reporting_engineer_id: editFormData.role === "employee" && editFormData.reportingEngineerId !== "none" 
+            ? editFormData.reportingEngineerId 
+            : null,
+        })
+        .eq("user_id", userToEdit.user_id);
+
+      if (profileError) throw profileError;
+
+      // Update role
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .update({ role: editFormData.role })
+        .eq("user_id", userToEdit.user_id);
+
+      if (roleError) throw roleError;
+
+      toast({
+        title: "User Updated",
+        description: `${editFormData.name}'s information has been updated successfully`,
+      });
+
+      setEditDialogOpen(false);
+      setUserToEdit(null);
+      
+      // Reload users list
+      const loadUsers = async () => {
+        try {
+          setListLoading(true);
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("user_id, name, email, balance");
+          if (profilesError) throw profilesError;
+
+          const ids = (profiles || []).map(p => p.user_id);
+          let rolesById: Record<string, string> = {};
+          if (ids.length > 0) {
+            const { data: rolesRows, error: rolesErr } = await supabase
+              .from("user_roles")
+              .select("user_id, role")
+              .in("user_id", ids);
+            if (rolesErr) throw rolesErr;
+            (rolesRows || []).forEach(r => { rolesById[r.user_id] = r.role; });
+          }
+
+          const combined = (profiles || []).map(p => ({
+            user_id: p.user_id,
+            name: (p as any).name || "",
+            email: (p as any).email || "",
+            balance: Number((p as any).balance ?? 0),
+            role: rolesById[p.user_id] || "employee",
+          }));
+          setUsers(combined);
+        } catch (e) {
+          console.error("Error loading users list:", e);
+        } finally {
+          setListLoading(false);
+        }
+      };
+      loadUsers();
+    } catch (error: any) {
+      console.error("Error updating user:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to update user",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+      setDeleting(true);
+
+      // Delete from user_roles first
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", userToDelete.user_id);
+
+      if (roleError) throw roleError;
+
+      // Delete from profiles (this will cascade delete related data)
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("user_id", userToDelete.user_id);
+
+      if (profileError) throw profileError;
+
+      // Note: Deleting from auth.users requires admin API access
+      // For now, we'll just delete from our tables
+      // The auth user will remain but won't be able to access the system
+
+      toast({
+        title: "User Deleted",
+        description: `${userToDelete.name} has been removed from the system`,
+      });
+
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+      
+      // Reload users list
+      const loadUsers = async () => {
+        try {
+          setListLoading(true);
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("user_id, name, email, balance");
+          if (profilesError) throw profilesError;
+
+          const ids = (profiles || []).map(p => p.user_id);
+          let rolesById: Record<string, string> = {};
+          if (ids.length > 0) {
+            const { data: rolesRows, error: rolesErr } = await supabase
+              .from("user_roles")
+              .select("user_id, role")
+              .in("user_id", ids);
+            if (rolesErr) throw rolesErr;
+            (rolesRows || []).forEach(r => { rolesById[r.user_id] = r.role; });
+          }
+
+          const combined = (profiles || []).map(p => ({
+            user_id: p.user_id,
+            name: (p as any).name || "",
+            email: (p as any).email || "",
+            balance: Number((p as any).balance ?? 0),
+            role: rolesById[p.user_id] || "employee",
+          }));
+          setUsers(combined);
+        } catch (e) {
+          console.error("Error loading users list:", e);
+        } finally {
+          setListLoading(false);
+        }
+      };
+      loadUsers();
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to delete user",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (userRole !== "admin") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -358,7 +579,7 @@ export default function UserManagement() {
                     <th className="px-4 py-3 font-semibold text-slate-700">Email</th>
                     <th className="px-4 py-3 font-semibold text-slate-700">Role</th>
                     <th className="px-4 py-3 font-semibold text-slate-700">Balance</th>
-                    <th className="px-4 py-3"></th>
+                    <th className="px-4 py-3 font-semibold text-slate-700 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -381,8 +602,16 @@ export default function UserManagement() {
                           </span>
                         </td>
                         <td className="px-4 py-3">₹{Number(u.balance ?? 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <Button variant="outline" size="sm" onClick={() => openUserDrawer(u)}>View</Button>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => openUserDrawer(u)}>View</Button>
+                            <Button variant="outline" size="sm" onClick={() => openEditDialog(u)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(u)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -804,6 +1033,106 @@ export default function UserManagement() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>Update user information and role</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name *</Label>
+              <Input
+                id="edit-name"
+                value={editFormData.name}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Full name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email *</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editFormData.email}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, email: e.target.value }))}
+                placeholder="email@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-role">Role *</Label>
+              <Select
+                value={editFormData.role}
+                onValueChange={(value: "admin" | "engineer" | "employee" | "cashier") => 
+                  setEditFormData(prev => ({ ...prev, role: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="engineer">Engineer</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="cashier">Cashier</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editFormData.role === "employee" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-engineer">Assign Engineer</Label>
+                <Select
+                  value={editFormData.reportingEngineerId}
+                  onValueChange={(value) => setEditFormData(prev => ({ ...prev, reportingEngineerId: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select engineer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {engineers.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name} ({e.email})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleUpdateUser} disabled={updating}>
+              {updating ? "Updating..." : "Update User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {userToDelete?.name} ({userToDelete?.email}) from the system. 
+              This action cannot be undone. All associated expenses and data will be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteUser}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete User"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

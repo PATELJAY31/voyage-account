@@ -27,7 +27,7 @@ export interface UpdateExpenseData {
   trip_start?: string;
   trip_end?: string;
   purpose?: string;
-  status?: "draft" | "submitted" | "under_review" | "verified" | "approved" | "rejected" | "paid";
+  status?: "submitted" | "verified" | "approved";
   admin_comment?: string;
   assigned_engineer_id?: string;
   amount?: number;
@@ -58,7 +58,7 @@ export class ExpenseService {
         purpose: data.purpose,
         category: data.category,
         total_amount: totalAmount,
-        status: "draft",
+        status: data.status || "submitted",
       })
       .select()
       .single();
@@ -104,9 +104,9 @@ export class ExpenseService {
 
     if (fetchError) throw fetchError;
 
-    // Check if expense can be edited (only draft status allows editing)
-    if (currentExpense.status !== "draft" && !data.status) {
-      throw new Error("Only draft expenses can be edited");
+    // Check if expense can be edited (only submitted expenses can be edited, not verified or approved)
+    if (currentExpense.status !== "submitted" && !data.status) {
+      throw new Error("Only submitted expenses can be edited. Verified or approved expenses cannot be modified.");
     }
 
     const totalAmount = currentExpense.total_amount;
@@ -159,8 +159,8 @@ export class ExpenseService {
 
     if (fetchError) throw fetchError;
 
-    if (expense.status !== "draft") {
-      throw new Error("Only draft expenses can be submitted");
+    if (expense.status !== "submitted") {
+      throw new Error("Only submitted expenses can be re-submitted");
     }
 
     // Line items are not required anymore for submission
@@ -183,9 +183,9 @@ export class ExpenseService {
       );
     }
 
-    // Auto-assign to reporting engineer and move to under_review
+    // Auto-assign to reporting engineer and move to submitted
     const updatePayload: any = {
-      status: "under_review",
+      status: "submitted",
       assigned_engineer_id: profile?.reporting_engineer_id,
       updated_at: new Date().toISOString(),
     };
@@ -231,7 +231,7 @@ export class ExpenseService {
       .from("expenses")
       .update({
         assigned_engineer_id: engineerId,
-        status: "under_review",
+        status: "submitted",
         updated_at: new Date().toISOString(),
       })
       .eq("id", expenseId)
@@ -252,7 +252,6 @@ export class ExpenseService {
   static async verifyExpense(
     expenseId: string,
     engineerId: string,
-    verified: boolean,
     comment?: string
   ): Promise<Expense> {
     // Check if engineer has permission
@@ -268,16 +267,18 @@ export class ExpenseService {
       .eq("id", expenseId)
       .single();
     if (curErr) throw curErr;
-    if (["approved", "paid", "rejected"].includes(current.status)) {
-      throw new Error("This expense is finalized and cannot be updated");
+    if (current.status === "approved") {
+      throw new Error("This expense is already approved and cannot be updated");
+    }
+    if (current.status !== "submitted") {
+      throw new Error("Only submitted expenses can be verified");
     }
 
-    // Update expense status
-    const status = verified ? "verified" : "rejected";
+    // Update expense status to verified
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
       .update({
-        status,
+        status: "verified",
         updated_at: new Date().toISOString(),
       })
       .eq("id", expenseId)
@@ -287,8 +288,7 @@ export class ExpenseService {
     if (updateError) throw updateError;
 
     // Log the action
-    const action = verified ? "expense_verified" : "expense_rejected_by_engineer";
-    await this.logAction(expenseId, engineerId, action, comment);
+    await this.logAction(expenseId, engineerId, "expense_verified", comment);
 
     return updatedExpense;
   }
@@ -317,8 +317,8 @@ export class ExpenseService {
     if (fetchError) throw fetchError;
 
     // Check if expense is verified (engineer approval required)
-    if (expense.status === "approved" || expense.status === "paid") {
-      throw new Error("This expense is already finalized");
+    if (expense.status === "approved") {
+      throw new Error("This expense is already approved");
     }
     if (expense.status !== "verified") {
       throw new Error("Expense must be verified by an engineer before admin approval");
@@ -460,7 +460,7 @@ export class ExpenseService {
 
     if (error) return false;
 
-    return expense.user_id === userId && expense.status === "draft";
+    return expense.user_id === userId && expense.status === "submitted";
   }
 
   /**
@@ -482,6 +482,11 @@ export class ExpenseService {
    * Check if user has specific role
    */
   private static async hasRole(userId: string, role: "admin" | "engineer" | "employee"): Promise<boolean> {
+    // Return false if userId is empty or invalid
+    if (!userId || userId.trim() === "") {
+      return false;
+    }
+
     const { data, error } = await supabase
       .from("user_roles")
       .select("role")
