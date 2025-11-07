@@ -87,6 +87,16 @@ export default function Balances() {
       
       console.log('Adding amount:', amountToAdd, 'to user:', userId, 'by:', userRole);
       
+      // Prevent cashiers from adding balance to themselves
+      if (userRole === 'cashier' && user?.id && userId === user.id) {
+        toast({ 
+          variant: "destructive", 
+          title: "Not Allowed", 
+          description: "You cannot add balance to your own account" 
+        });
+        return;
+      }
+      
       const currentRow = rows.find(r => r.user_id === userId);
       if (!currentRow) throw new Error('User not found');
       
@@ -170,6 +180,16 @@ export default function Balances() {
   const updateBalance = async (userId: string, newBalance: number) => {
     try {
       setSavingId(userId);
+      
+      // Prevent cashiers from updating their own balance
+      if (userRole === 'cashier' && user?.id && userId === user.id) {
+        toast({ 
+          variant: "destructive", 
+          title: "Not Allowed", 
+          description: "You cannot update your own balance" 
+        });
+        return;
+      }
       
       const currentRow = rows.find(r => r.user_id === userId);
       if (!currentRow) throw new Error('User not found');
@@ -297,6 +317,7 @@ export default function Balances() {
                             const val = parseFloat(e.target.value || '0');
                             setAddAmounts(prev => ({ ...prev, [r.user_id]: isNaN(val) ? 0 : val }));
                           }}
+                          disabled={userRole === 'cashier' && user?.id === r.user_id}
                         />
                         <span className="text-xs text-muted-foreground">INR</span>
                       </div>
@@ -304,7 +325,7 @@ export default function Balances() {
                     <TableCell className="text-right">
                       <Button
                         size="sm"
-                        disabled={savingId === r.user_id}
+                        disabled={savingId === r.user_id || (userRole === 'cashier' && user?.id === r.user_id)}
                         onClick={() => {
                           console.log('Button clicked for user:', r.user_id, 'userRole:', userRole);
                           const amountToAdd = addAmounts[r.user_id] || 0;

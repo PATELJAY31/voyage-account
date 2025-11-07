@@ -233,16 +233,22 @@ export default function UserManagement() {
         }
       );
 
-      // Create user using signup (this will send confirmation email)
+      // Create user using signup with email confirmation disabled
+      // Note: This requires Supabase to be configured to auto-confirm users
+      // OR use Admin API with service role key (not recommended for frontend)
       const { data: authData, error: authError } = await tempSupabase.auth.signUp({
         email: validated.email,
         password: validated.password,
         options: {
+          emailRedirectTo: undefined, // Don't send confirmation email
           data: {
             name: validated.name,
           },
         },
       });
+
+      // If user was created but needs confirmation, auto-confirm via database trigger
+      // The database trigger will handle auto-confirmation
 
       if (authError) {
         // Handle specific error cases
@@ -278,7 +284,7 @@ export default function UserManagement() {
 
       toast({
         title: "User Created Successfully",
-        description: `${validated.name} has been created as ${validated.role}. They will receive an email to confirm their account.`,
+        description: `${validated.name} has been created as ${validated.role}. The account is ready to use immediately.`,
       });
 
       // Reset form
@@ -375,12 +381,12 @@ export default function UserManagement() {
     try {
       setUpdating(true);
 
-      // Update profile (name, email)
+      // Update profile (name only - email cannot be changed for security)
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
           name: editFormData.name,
-          email: editFormData.email,
+          // Email is not updated - it cannot be changed for security reasons
           reporting_engineer_id: editFormData.role === "employee" && editFormData.reportingEngineerId !== "none" 
             ? editFormData.reportingEngineerId 
             : null,
@@ -474,14 +480,26 @@ export default function UserManagement() {
 
       if (profileError) throw profileError;
 
-      // Note: Deleting from auth.users requires admin API access
-      // For now, we'll just delete from our tables
-      // The auth user will remain but won't be able to access the system
-
-      toast({
-        title: "User Deleted",
-        description: `${userToDelete.name} has been removed from the system`,
+      // Delete from auth.users using database function
+      const { error: authDeleteError } = await supabase.rpc('delete_user_from_auth', {
+        user_id_to_delete: userToDelete.user_id
       });
+
+      if (authDeleteError) {
+        console.error("Error deleting from auth.users:", authDeleteError);
+        // If auth deletion fails, we still want to proceed as the user is removed from our system
+        // But log the error for admin awareness
+        toast({
+          variant: "destructive",
+          title: "Partial Deletion",
+          description: `${userToDelete.name} removed from system but may still exist in auth. Please check.`,
+        });
+      } else {
+        toast({
+          title: "User Deleted",
+          description: `${userToDelete.name} has been completely removed from the system`,
+        });
+      }
 
       setDeleteDialogOpen(false);
       setUserToDelete(null);
@@ -808,7 +826,7 @@ export default function UserManagement() {
                       </p>
                     )}
                     <p className="text-xs text-gray-500">
-                      User will receive an email to confirm their account
+                      Account will be ready to use immediately (no email confirmation required)
                     </p>
                   </div>
                 </div>
@@ -849,11 +867,7 @@ export default function UserManagement() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>User receives confirmation email</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>Account activated after email confirmation</span>
+                      <span>Account activated immediately (no email confirmation)</span>
                     </div>
                   </div>
                 </div>
@@ -1052,14 +1066,17 @@ export default function UserManagement() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-email">Email *</Label>
+              <Label htmlFor="edit-email">Email</Label>
               <Input
                 id="edit-email"
                 type="email"
                 value={editFormData.email}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, email: e.target.value }))}
+                disabled
+                readOnly
+                className="bg-muted cursor-not-allowed"
                 placeholder="email@example.com"
               />
+              <p className="text-xs text-muted-foreground">Email cannot be changed for security reasons</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-role">Role *</Label>

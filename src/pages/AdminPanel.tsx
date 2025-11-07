@@ -922,25 +922,27 @@ export default function AdminPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
+                    {users.map((userRow) => {
+                      const currentUserId = user?.id; // useAuth user id
+                      return (
+                        <TableRow key={userRow.id}>
+                        <TableCell className="font-medium">{userRow.name}</TableCell>
+                        <TableCell>{userRow.email}</TableCell>
                         <TableCell>
-                          <Badge variant={user.role === "admin" ? "default" : "secondary"}>
-                            {user.role}
+                          <Badge variant={userRow.role === "admin" ? "default" : "secondary"}>
+                            {userRow.role}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {user.role === 'employee' ? (
+                          {userRow.role === 'employee' ? (
                             <Select
-                              value={user.reporting_engineer_id || "none"}
+                              value={userRow.reporting_engineer_id || "none"}
                               onValueChange={async (value) => {
                                 const newEngineerId = value === "none" ? null : value;
                                 await supabase
                                   .from('profiles')
                                   .update({ reporting_engineer_id: newEngineerId })
-                                  .eq('user_id', user.id);
+                                  .eq('user_id', userRow.id);
                                 fetchUsers();
                               }}
                             >
@@ -964,32 +966,42 @@ export default function AdminPanel() {
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
-                              value={(user.balance ?? 0).toString()}
+                              value={(userRow.balance ?? 0).toString()}
                               onChange={async (e) => {
+                                // Prevent cashiers from updating their own balance
+                                if (userRole === 'cashier' && currentUserId && currentUserId === userRow.id) {
+                                  toast({
+                                    variant: "destructive",
+                                    title: "Not Allowed",
+                                    description: "You cannot update your own balance"
+                                  });
+                                  return;
+                                }
                                 const newVal = parseFloat(e.target.value || '0');
                                 await supabase
                                   .from('profiles')
                                   .update({ balance: newVal })
-                                  .eq('user_id', user.id);
+                                  .eq('user_id', userRow.id);
                                 fetchUsers();
                               }}
                               className="w-28 h-8"
+                              disabled={userRole === 'cashier' && currentUserId === userRow.id}
                             />
                             <span className="text-xs text-muted-foreground">INR</span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={user.is_active ? "success" : "destructive"}>
-                            {user.is_active ? "Active" : "Inactive"}
+                          <Badge variant={userRow.is_active ? "success" : "destructive"}>
+                            {userRow.is_active ? "Active" : "Inactive"}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {format(new Date(user.created_at), "MMM d, yyyy")}
+                          {format(new Date(userRow.created_at), "MMM d, yyyy")}
                         </TableCell>
                         <TableCell className="text-right">
                           <Select
-                            value={user.role}
-                            onValueChange={(newRole) => updateUserRole(user.id, newRole)}
+                            value={userRow.role}
+                            onValueChange={(newRole) => updateUserRole(userRow.id, newRole)}
                           >
                             <SelectTrigger className="w-32">
                               <SelectValue />
@@ -1002,8 +1014,9 @@ export default function AdminPanel() {
                             </SelectContent>
                           </Select>
                         </TableCell>
-                      </TableRow>
-                    ))}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
