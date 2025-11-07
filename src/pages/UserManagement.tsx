@@ -375,12 +375,12 @@ export default function UserManagement() {
     try {
       setUpdating(true);
 
-      // Update profile (name, email)
+      // Update profile (name only - email cannot be changed for security)
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
           name: editFormData.name,
-          email: editFormData.email,
+          // Email is not updated - it cannot be changed for security reasons
           reporting_engineer_id: editFormData.role === "employee" && editFormData.reportingEngineerId !== "none" 
             ? editFormData.reportingEngineerId 
             : null,
@@ -1052,14 +1052,17 @@ export default function UserManagement() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-email">Email *</Label>
+              <Label htmlFor="edit-email">Email</Label>
               <Input
                 id="edit-email"
                 type="email"
                 value={editFormData.email}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, email: e.target.value }))}
+                disabled
+                readOnly
+                className="bg-muted cursor-not-allowed"
                 placeholder="email@example.com"
               />
+              <p className="text-xs text-muted-foreground">Email cannot be changed for security reasons</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-role">Role *</Label>
